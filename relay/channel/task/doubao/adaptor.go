@@ -132,18 +132,34 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-// EstimateBilling 检测请求 metadata 中是否包含视频输入，返回视频折扣 OtherRatio。
+// EstimateBilling 检测视频输入折扣和分辨率溢价，返回 OtherRatios。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
 	}
+
+	otherRatios := make(map[string]float64)
+
 	if hasVideoInMetadata(req.Metadata) {
 		if ratio, ok := GetVideoInputRatio(info.OriginModelName); ok {
-			return map[string]float64{"video_input": ratio}
+			otherRatios["video_input"] = ratio
 		}
 	}
-	return nil
+
+	// 读取 metadata 中的 resolution 字段（如 "1080p"、"720p"）
+	if req.Metadata != nil {
+		if res, ok := req.Metadata["resolution"].(string); ok {
+			if ratio, ok := GetResolutionRatio(info.OriginModelName, res); ok {
+				otherRatios["resolution"] = ratio
+			}
+		}
+	}
+
+	if len(otherRatios) == 0 {
+		return nil
+	}
+	return otherRatios
 }
 
 // hasVideoInMetadata 直接检查 metadata 的 content 数组是否包含 video_url 条目，
