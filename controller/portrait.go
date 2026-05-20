@@ -1,10 +1,9 @@
 package controller
 
 import (
-	"encoding/json"
-	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	portraitSvc "github.com/QuantumNous/new-api/service/portrait"
 
@@ -18,6 +17,12 @@ type PortraitCreateGroupRequest struct {
 	GroupType   string `json:"group_type"`
 }
 
+// PortraitUpdateGroupRequest 更新素材组请求体
+type PortraitUpdateGroupRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 // PortraitCreateAssetRequest 创建素材请求体
 type PortraitCreateAssetRequest struct {
 	GroupId   string `json:"group_id"`
@@ -26,26 +31,27 @@ type PortraitCreateAssetRequest struct {
 	Name      string `json:"name"`
 }
 
-func portraitError(c *gin.Context, status int, msg string) {
-	c.JSON(status, gin.H{"success": false, "message": msg})
+// PortraitUpdateAssetRequest 更新素材请求体（当前仅支持更新 Name）
+type PortraitUpdateAssetRequest struct {
+	Name string `json:"name"`
 }
 
 // PortraitCreateGroup POST /v1/portrait/groups
 func PortraitCreateGroup(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {
-		portraitError(c, http.StatusUnauthorized, "未授权")
+		common.ApiErrorMsg(c, "未授权")
 		return
 	}
 
 	var req PortraitCreateGroupRequest
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		portraitError(c, http.StatusBadRequest, "请求体解析失败")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求体解析失败")
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" {
-		portraitError(c, http.StatusBadRequest, "素材组名称不能为空")
+		common.ApiErrorMsg(c, "素材组名称不能为空")
 		return
 	}
 	if req.GroupType == "" {
@@ -54,7 +60,7 @@ func PortraitCreateGroup(c *gin.Context) {
 
 	result, err := portraitSvc.CreateAssetGroup(req.Name, req.Description, req.GroupType)
 	if err != nil {
-		portraitError(c, http.StatusBadGateway, "调用火山引擎失败: "+err.Error())
+		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
 		return
 	}
 
@@ -64,12 +70,11 @@ func PortraitCreateGroup(c *gin.Context) {
 		Name:          req.Name,
 	}
 	if err = model.CreatePortraitGroup(group); err != nil {
-		portraitError(c, http.StatusInternalServerError, "保存素材组记录失败: "+err.Error())
+		common.ApiErrorMsg(c, "保存素材组记录失败: "+err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success":  true,
+	common.ApiSuccess(c, gin.H{
 		"group_id": result.Id,
 		"name":     req.Name,
 		"id":       group.Id,
@@ -80,19 +85,66 @@ func PortraitCreateGroup(c *gin.Context) {
 func PortraitListGroups(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {
-		portraitError(c, http.StatusUnauthorized, "未授权")
+		common.ApiErrorMsg(c, "未授权")
 		return
 	}
 
-	groups, err := model.GetPortraitGroupsByUserId(userId)
+	pageInfo := common.GetPageQuery(c)
+	groups, total, err := model.GetPortraitGroupsByUserIdPaged(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		portraitError(c, http.StatusInternalServerError, "查询素材组失败: "+err.Error())
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(groups)
+	common.ApiSuccess(c, pageInfo)
+}
+
+// PortraitUpdateGroup PUT /v1/portrait/groups/:groupId
+func PortraitUpdateGroup(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId == 0 {
+		common.ApiErrorMsg(c, "未授权")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    groups,
+	remoteGroupId := c.Param("groupId")
+	if remoteGroupId == "" {
+		common.ApiErrorMsg(c, "groupId 不能为空")
+		return
+	}
+
+	group, err := model.GetPortraitGroupByRemoteId(userId, remoteGroupId)
+	if err != nil {
+		common.ApiErrorMsg(c, "素材组不存在")
+		return
+	}
+
+	var req PortraitUpdateGroupRequest
+	if err = c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求体解析失败")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	req.Description = strings.TrimSpace(req.Description)
+	if req.Name == "" && req.Description == "" {
+		common.ApiErrorMsg(c, "name 或 description 至少传一个")
+		return
+	}
+
+	if _, err = portraitSvc.UpdateAssetGroup(remoteGroupId, req.Name, req.Description); err != nil {
+		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
+		return
+	}
+
+	if req.Name != "" {
+		group.Name = req.Name
+		_ = model.DB.Save(group).Error
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"group_id": remoteGroupId,
+		"name":     group.Name,
 	})
 }
 
@@ -100,13 +152,13 @@ func PortraitListGroups(c *gin.Context) {
 func PortraitCreateAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {
-		portraitError(c, http.StatusUnauthorized, "未授权")
+		common.ApiErrorMsg(c, "未授权")
 		return
 	}
 
 	var req PortraitCreateAssetRequest
-	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		portraitError(c, http.StatusBadRequest, "请求体解析失败")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求体解析失败")
 		return
 	}
 
@@ -115,22 +167,22 @@ func PortraitCreateAsset(c *gin.Context) {
 	req.AssetType = strings.TrimSpace(req.AssetType)
 
 	if req.GroupId == "" {
-		portraitError(c, http.StatusBadRequest, "group_id 不能为空")
+		common.ApiErrorMsg(c, "group_id 不能为空")
 		return
 	}
 	if req.URL == "" {
-		portraitError(c, http.StatusBadRequest, "url 不能为空")
+		common.ApiErrorMsg(c, "url 不能为空")
 		return
 	}
 	validTypes := map[string]bool{"Image": true, "Video": true, "Audio": true}
 	if !validTypes[req.AssetType] {
-		portraitError(c, http.StatusBadRequest, "asset_type 须为 Image / Video / Audio")
+		common.ApiErrorMsg(c, "asset_type 须为 Image / Video / Audio")
 		return
 	}
 
 	result, err := portraitSvc.CreateAsset(req.GroupId, req.URL, req.AssetType, req.Name)
 	if err != nil {
-		portraitError(c, http.StatusBadGateway, "调用火山引擎失败: "+err.Error())
+		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
 		return
 	}
 
@@ -144,16 +196,15 @@ func PortraitCreateAsset(c *gin.Context) {
 		Status:        "Submitted",
 	}
 	if err = model.CreatePortraitAsset(asset); err != nil {
-		portraitError(c, http.StatusInternalServerError, "保存素材记录失败: "+err.Error())
+		common.ApiErrorMsg(c, "保存素材记录失败: "+err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success":        true,
-		"id":             asset.Id,
-		"asset_id":       result.AssetId,
+	common.ApiSuccess(c, gin.H{
+		"id":              asset.Id,
+		"asset_id":        result.AssetId,
 		"remote_group_id": req.GroupId,
-		"status":         asset.Status,
+		"status":          asset.Status,
 	})
 }
 
@@ -161,21 +212,20 @@ func PortraitCreateAsset(c *gin.Context) {
 func PortraitListAssets(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {
-		portraitError(c, http.StatusUnauthorized, "未授权")
+		common.ApiErrorMsg(c, "未授权")
 		return
 	}
 
 	groupId := c.Query("group_id")
-	assets, err := model.GetPortraitAssetsByUserId(userId, groupId)
+	pageInfo := common.GetPageQuery(c)
+	assets, total, err := model.GetPortraitAssetsByUserIdPaged(userId, groupId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
-		portraitError(c, http.StatusInternalServerError, "查询素材列表失败: "+err.Error())
+		common.ApiError(c, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    assets,
-	})
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(assets)
+	common.ApiSuccess(c, pageInfo)
 }
 
 // PortraitGetAsset GET /v1/portrait/assets/:assetId
@@ -183,26 +233,24 @@ func PortraitListAssets(c *gin.Context) {
 func PortraitGetAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {
-		portraitError(c, http.StatusUnauthorized, "未授权")
+		common.ApiErrorMsg(c, "未授权")
 		return
 	}
 
 	remoteAssetId := c.Param("assetId")
 	if remoteAssetId == "" {
-		portraitError(c, http.StatusBadRequest, "assetId 不能为空")
+		common.ApiErrorMsg(c, "assetId 不能为空")
 		return
 	}
 
 	asset, err := model.GetPortraitAssetByRemoteId(userId, remoteAssetId)
 	if err != nil {
-		portraitError(c, http.StatusNotFound, "素材不存在")
+		common.ApiErrorMsg(c, "素材不存在")
 		return
 	}
 
-	// 如果已是终态，直接返回本地数据，不再调火山引擎
-	if asset.Status == "Approved" || asset.Status == "Rejected" || asset.Status == "Failed" {
-		c.JSON(http.StatusOK, gin.H{
-			"success":      true,
+	buildAssetResponse := func(refreshErr string) gin.H {
+		h := gin.H{
 			"asset_id":     asset.RemoteAssetId,
 			"status":       asset.Status,
 			"resolved_url": asset.ResolvedUrl,
@@ -211,26 +259,23 @@ func PortraitGetAsset(c *gin.Context) {
 			"source_url":   asset.SourceUrl,
 			"created_at":   asset.CreatedAt,
 			"updated_at":   asset.UpdatedAt,
-		})
+		}
+		if refreshErr != "" {
+			h["refresh_error"] = refreshErr
+		}
+		return h
+	}
+
+	// 终态：Active（通过）、Failed（失败），不再调火山
+	if asset.Status == "Active" || asset.Status == "Failed" {
+		common.ApiSuccess(c, buildAssetResponse(""))
 		return
 	}
 
 	// 非终态：实时查询火山引擎
 	volcResult, err := portraitSvc.GetAsset(remoteAssetId)
 	if err != nil {
-		// 火山引擎调用失败仍返回本地缓存状态，并附带错误信息
-		c.JSON(http.StatusOK, gin.H{
-			"success":        true,
-			"asset_id":       asset.RemoteAssetId,
-			"status":         asset.Status,
-			"resolved_url":   asset.ResolvedUrl,
-			"name":           asset.Name,
-			"asset_type":     asset.AssetType,
-			"source_url":     asset.SourceUrl,
-			"refresh_error":  err.Error(),
-			"created_at":     asset.CreatedAt,
-			"updated_at":     asset.UpdatedAt,
-		})
+		common.ApiSuccess(c, buildAssetResponse(err.Error()))
 		return
 	}
 
@@ -242,15 +287,50 @@ func PortraitGetAsset(c *gin.Context) {
 	}
 	_ = model.SavePortraitAsset(asset)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"asset_id":     asset.RemoteAssetId,
-		"status":       asset.Status,
-		"resolved_url": asset.ResolvedUrl,
-		"name":         asset.Name,
-		"asset_type":   asset.AssetType,
-		"source_url":   asset.SourceUrl,
-		"created_at":   asset.CreatedAt,
-		"updated_at":   asset.UpdatedAt,
+	common.ApiSuccess(c, buildAssetResponse(""))
+}
+
+// PortraitUpdateAsset PUT /v1/portrait/assets/:assetId
+func PortraitUpdateAsset(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId == 0 {
+		common.ApiErrorMsg(c, "未授权")
+		return
+	}
+
+	remoteAssetId := c.Param("assetId")
+	if remoteAssetId == "" {
+		common.ApiErrorMsg(c, "assetId 不能为空")
+		return
+	}
+
+	asset, err := model.GetPortraitAssetByRemoteId(userId, remoteAssetId)
+	if err != nil {
+		common.ApiErrorMsg(c, "素材不存在")
+		return
+	}
+
+	var req PortraitUpdateAssetRequest
+	if err = c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求体解析失败")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		common.ApiErrorMsg(c, "name 不能为空")
+		return
+	}
+
+	if _, err = portraitSvc.UpdateAsset(remoteAssetId, req.Name); err != nil {
+		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
+		return
+	}
+
+	asset.Name = req.Name
+	_ = model.SavePortraitAsset(asset)
+
+	common.ApiSuccess(c, gin.H{
+		"asset_id": remoteAssetId,
+		"name":     asset.Name,
 	})
 }

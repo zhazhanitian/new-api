@@ -12,10 +12,15 @@ type PortraitGroup struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-func GetPortraitGroupsByUserId(userId int) ([]*PortraitGroup, error) {
+func GetPortraitGroupsByUserIdPaged(userId, startIdx, pageSize int) ([]*PortraitGroup, int64, error) {
 	var groups []*PortraitGroup
-	err := DB.Where("user_id = ?", userId).Order("created_at desc").Find(&groups).Error
-	return groups, err
+	var total int64
+	query := DB.Model(&PortraitGroup{}).Where("user_id = ?", userId)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("created_at desc").Offset(startIdx).Limit(pageSize).Find(&groups).Error
+	return groups, total, err
 }
 
 func CreatePortraitGroup(group *PortraitGroup) error {

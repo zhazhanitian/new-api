@@ -10,20 +10,24 @@ type PortraitAsset struct {
 	Name          string    `json:"name" gorm:"type:varchar(255)"`
 	AssetType     string    `json:"asset_type" gorm:"type:varchar(20);not null"` // Image / Video / Audio
 	SourceUrl     string    `json:"source_url" gorm:"type:text;not null"`
-	Status        string    `json:"status" gorm:"type:varchar(50)"` // Submitted / Processing / Approved / Rejected
+	Status        string    `json:"status" gorm:"type:varchar(50)"` // Submitted / Processing / Active / Failed
 	ResolvedUrl   string    `json:"resolved_url" gorm:"type:text"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-func GetPortraitAssetsByUserId(userId int, groupId string) ([]*PortraitAsset, error) {
+func GetPortraitAssetsByUserIdPaged(userId int, groupId string, startIdx, pageSize int) ([]*PortraitAsset, int64, error) {
 	var assets []*PortraitAsset
-	query := DB.Where("user_id = ?", userId)
+	var total int64
+	query := DB.Model(&PortraitAsset{}).Where("user_id = ?", userId)
 	if groupId != "" {
 		query = query.Where("remote_group_id = ?", groupId)
 	}
-	err := query.Order("created_at desc").Find(&assets).Error
-	return assets, err
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Order("created_at desc").Offset(startIdx).Limit(pageSize).Find(&assets).Error
+	return assets, total, err
 }
 
 func GetPortraitAssetByRemoteId(userId int, remoteAssetId string) (*PortraitAsset, error) {
@@ -41,9 +45,10 @@ func SavePortraitAsset(asset *PortraitAsset) error {
 }
 
 // GetPendingPortraitAssets 返回所有状态不是终态的素材（用于后台轮询）
+// 终态：Active（审核通过）、Failed（失败）
 func GetPendingPortraitAssets() ([]*PortraitAsset, error) {
 	var assets []*PortraitAsset
-	err := DB.Where("status NOT IN ?", []string{"Approved", "Rejected", "Failed"}).
+	err := DB.Where("status NOT IN ?", []string{"Active", "Failed"}).
 		Order("updated_at asc").
 		Find(&assets).Error
 	return assets, err

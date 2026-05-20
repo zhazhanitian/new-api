@@ -13,9 +13,11 @@ func SetPortraitRouter(router *gin.Engine) {
 	{
 		portraitRouter.POST("/groups", controller.PortraitCreateGroup)
 		portraitRouter.GET("/groups", controller.PortraitListGroups)
+		portraitRouter.PUT("/groups/:groupId", controller.PortraitUpdateGroup)
 
 		portraitRouter.POST("/assets", controller.PortraitCreateAsset)
 		portraitRouter.GET("/assets", controller.PortraitListAssets)
 		portraitRouter.GET("/assets/:assetId", controller.PortraitGetAsset)
+		portraitRouter.PUT("/assets/:assetId", controller.PortraitUpdateAsset)
 	}
 }

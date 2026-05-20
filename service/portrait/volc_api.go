@@ -205,6 +205,57 @@ type GetAssetResult struct {
 	Error       string `json:"error"`
 }
 
+// UpdateAssetResult 更新素材响应
+type UpdateAssetResult struct {
+	Id string `json:"Id"`
+}
+
+// UpdateAsset 更新素材名称（火山仅支持更新 Name）
+func UpdateAsset(remoteAssetId, name string) (*UpdateAssetResult, error) {
+	projectName := portrait_setting.VolcPortraitProjectName
+	body := map[string]interface{}{
+		"Id":          remoteAssetId,
+		"ProjectName": projectName,
+	}
+	if name != "" {
+		body["Name"] = name
+	}
+	raw, err := callVolcAPI("UpdateAsset", body)
+	if err != nil {
+		return nil, err
+	}
+	var result UpdateAssetResult
+	_ = json.Unmarshal(raw, &result)
+	return &result, nil
+}
+
+// UpdateAssetGroupResult 更新素材组响应
+type UpdateAssetGroupResult struct {
+	Id string `json:"Id"`
+}
+
+// UpdateAssetGroup 更新素材组名称和描述（火山仅支持更新 Name、Description）
+func UpdateAssetGroup(groupId, name, description string) (*UpdateAssetGroupResult, error) {
+	projectName := portrait_setting.VolcPortraitProjectName
+	body := map[string]interface{}{
+		"Id":          groupId,
+		"ProjectName": projectName,
+	}
+	if name != "" {
+		body["Name"] = name
+	}
+	if description != "" {
+		body["Description"] = description
+	}
+	raw, err := callVolcAPI("UpdateAssetGroup", body)
+	if err != nil {
+		return nil, err
+	}
+	var result UpdateAssetGroupResult
+	_ = json.Unmarshal(raw, &result)
+	return &result, nil
+}
+
 // GetAsset 查询素材审核状态
 func GetAsset(remoteAssetId string) (*GetAssetResult, error) {
 	projectName := portrait_setting.VolcPortraitProjectName
