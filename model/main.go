@@ -259,6 +259,8 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&PortraitGroup{},
+		&PortraitAsset{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},

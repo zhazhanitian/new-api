@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
+	portraitSvc "github.com/QuantumNous/new-api/service/portrait"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -130,6 +131,9 @@ func main() {
 
 	// Channel upstream model update check task
 	controller.StartChannelUpstreamModelUpdateTask()
+
+	// Portrait library asset status polling
+	portraitSvc.StartPortraitPoller()
 
 	if common.IsMasterNode && constant.UpdateTask {
 		gopool.Go(func() {

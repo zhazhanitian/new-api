@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
+	"github.com/QuantumNous/new-api/setting/portrait_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
@@ -177,6 +178,10 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	common.OptionMap["VolcPortraitAccessKeyId"] = portrait_setting.VolcPortraitAccessKeyId
+	common.OptionMap["VolcPortraitSecretAccessKey"] = portrait_setting.VolcPortraitSecretAccessKey
+	common.OptionMap["VolcPortraitProjectName"] = portrait_setting.VolcPortraitProjectName
+	common.OptionMap["VolcPortraitRegion"] = portrait_setting.VolcPortraitRegion
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -543,6 +548,16 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	case "PayMethods":
 		err = operation_setting.UpdatePayMethodsByJsonString(value)
+	case "VolcPortraitAccessKeyId":
+		portrait_setting.VolcPortraitAccessKeyId = value
+	case "VolcPortraitSecretAccessKey":
+		portrait_setting.VolcPortraitSecretAccessKey = value
+	case "VolcPortraitProjectName":
+		portrait_setting.VolcPortraitProjectName = value
+	case "VolcPortraitRegion":
+		if value != "" {
+			portrait_setting.VolcPortraitRegion = value
+		}
 	case "WaffoPayMethods":
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
