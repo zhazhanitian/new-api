@@ -59,6 +59,7 @@ export default defineConfig(({ envMode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
       },
+      dedupe: ['react', 'react-dom'],
     },
     html: {
       template: './index.html',
