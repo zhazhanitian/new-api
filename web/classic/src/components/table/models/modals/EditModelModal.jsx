@@ -50,6 +50,7 @@ const ENDPOINT_TEMPLATE = {
   gemini: { path: '/v1beta/models/{model}:generateContent', method: 'POST' },
   'jina-rerank': { path: '/v1/rerank', method: 'POST' },
   'image-generation': { path: '/v1/images/generations', method: 'POST' },
+  'image-task': { path: '/v1/image-tasks/submit', method: 'POST' },
 };
 
 const nameRuleOptions = [

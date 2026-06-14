@@ -2066,6 +2066,21 @@ export function ChannelMutateDrawer({
                   }}
                 />
 
+                {currentType === 58 && (
+                  <div className='bg-muted/20 space-y-1 rounded-lg border p-4'>
+                    <div className='text-sm font-semibold'>
+                      {t('TencentVOD API Key Format')}
+                    </div>
+                    <div className='text-muted-foreground text-xs'>
+                      {t('Format: SubAppId|SecretId|SecretKey')}
+                      <br />
+                      {t(
+                        'SubAppId is your Tencent VOD sub-application ID. Use 0 for the main application.'
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {isEditing && isMultiKeyChannel && (
                   <FormField
                     control={form.control}

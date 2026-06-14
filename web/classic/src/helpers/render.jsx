@@ -405,6 +405,8 @@ export function getChannelIcon(channelType) {
       return <Doubao.Color size={iconSize} />;
     case 56: // Replicate
       return <Replicate size={iconSize} />;
+    case 58: // TencentVOD
+      return <Hunyuan.Color size={iconSize} />;
     case 8: // 自定义渠道
     case 22: // 知识库：FastGPT
       return <FastGPT.Color size={iconSize} />;
@@ -2239,6 +2241,12 @@ function parseTierBody(bodyStr) {
   for (const [varName, field] of Object.entries(BILLING_VAR_KEY_TO_FIELD)) {
     tier[field] = coeffs[varName] || 0;
   }
+  // 纯数字：作为固定 quota 费用（不含任何变量乘法）
+  const trimmed = bodyStr.trim();
+  const hasVarExpr = BILLING_VAR_REGEX.test(trimmed);
+  BILLING_VAR_REGEX.lastIndex = 0;
+  const isPlainNumber = !hasVarExpr && /^[\d.eE+\-]+$/.test(trimmed);
+  tier.fixedCost = isPlainNumber ? Number(trimmed) : 0;
   return tier;
 }
 

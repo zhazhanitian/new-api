@@ -19,6 +19,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+      args:
+        - HTTP_PROXY=http://host.docker.internal:7892
+        - HTTPS_PROXY=http://host.docker.internal:7892
+        - NO_PROXY=localhost,127.0.0.1
+    platform: linux/arm64
     image: new-api-dev:local
     container_name: new-api-dev
     restart: unless-stopped
@@ -43,6 +48,8 @@ services:
     image: redis:7-alpine
     container_name: new-api-dev-redis
     restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - dev-network
 
@@ -54,6 +61,8 @@ services:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: new-api
+    ports:
+      - "5432:5432"
     volumes:
       - dev_pg_data:/var/lib/postgresql/data
     networks:

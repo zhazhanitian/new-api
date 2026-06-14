@@ -2639,6 +2639,17 @@ const EditChannelModal = (props) => {
                       />
                     )}
 
+                    {inputs.type === 58 && (
+                      <Banner
+                        type='info'
+                        closeIcon={null}
+                        className='mb-4 rounded-xl'
+                        description={t(
+                          'API Key 格式：SubAppId|SecretId|SecretKey。SubAppId 为腾讯云 VOD 子应用 ID，无子应用请填 0。',
+                        )}
+                      />
+                    )}
+
                     {inputs.type === 20 && (
                       <Form.Switch
                         field='is_enterprise_account'

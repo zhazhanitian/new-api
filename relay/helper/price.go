@@ -177,16 +177,28 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 			modelPrice = defaultPrice
 			usePrice = true
 		} else {
-			var ratioSuccess bool
-			var matchName string
-			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
-			acceptUnsetRatio := false
-			if info.UserSetting.AcceptUnsetRatioModel {
-				acceptUnsetRatio = true
+		var ratioSuccess bool
+		var matchName string
+		modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+		acceptUnsetRatio := false
+		if info.UserSetting.AcceptUnsetRatioModel {
+			acceptUnsetRatio = true
+		}
+		if !ratioSuccess && !acceptUnsetRatio {
+			// 降级：检查是否配置了表达式/阶梯计费
+			if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
+				tieredData, err := modelPriceHelperTiered(c, info, 0, &types.TokenCountMeta{}, groupRatioInfo)
+				if err != nil {
+					return types.PriceData{}, err
+				}
+				// modelPriceHelperTiered 只填 QuotaToPreConsume，
+				// 但 PerCall 路径（任务/MJ）统一读 Quota，需对齐。
+				tieredData.Quota = tieredData.QuotaToPreConsume
+				info.PriceData = tieredData
+				return tieredData, nil
 			}
-			if !ratioSuccess && !acceptUnsetRatio {
-				return types.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
-			}
+			return types.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
+		}
 		}
 	}
 

@@ -113,7 +113,9 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
     );
   }
 
+  const QUOTA_PER_USD = 500000;
   const priceFields = BILLING_PRICING_VARS.map((v) => [v.field, v.shortLabel]);
+  const hasFixedCost = hasTiers && tiers.some((tier) => tier.fixedCost > 0);
 
   const tierColumns = [
     {
@@ -135,6 +137,13 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
         dataIndex: field,
         render: (v) => v > 0 ? <Text strong>{`${symbol}${(v * rate).toFixed(4)}`}</Text> : '-',
       })),
+    ...(hasFixedCost ? [{
+      title: t('单次费用'),
+      dataIndex: 'fixedCost',
+      render: (v) => v > 0
+        ? <Text strong>{`${symbol}${((v / 1_000_000) * rate).toFixed(4)}`}</Text>
+        : '-',
+    }] : []),
   ];
 
   const tierData = hasTiers
@@ -142,6 +151,7 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
         key: `tier-${i}`,
         label: tier.label,
         condSummary: formatConditionSummary(tier.conditions, t),
+        fixedCost: tier.fixedCost || 0,
         ...Object.fromEntries(priceFields.map(([field]) => [field, tier[field] || 0])),
       }))
     : [];

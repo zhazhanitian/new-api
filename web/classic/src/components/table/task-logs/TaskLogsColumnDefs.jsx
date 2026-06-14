@@ -33,6 +33,7 @@ import {
   Hash,
   Video,
   Sparkles,
+  Image,
 } from 'lucide-react';
 import {
   TASK_ACTION_FIRST_TAIL_GENERATE,
@@ -40,6 +41,7 @@ import {
   TASK_ACTION_REFERENCE_GENERATE,
   TASK_ACTION_TEXT_GENERATE,
   TASK_ACTION_REMIX_GENERATE,
+  TASK_ACTION_IMAGE_GENERATE,
 } from '../../../constants/common.constant';
 import { CHANNEL_OPTIONS } from '../../../constants/channel.constants';
 import { stringToColor } from '../../../helpers/render';
@@ -102,6 +104,12 @@ const renderType = (type, t) => {
       return (
         <Tag color='pink' shape='circle' prefixIcon={<FileText size={14} />}>
           {t('生成歌词')}
+        </Tag>
+      );
+    case TASK_ACTION_IMAGE_GENERATE:
+      return (
+        <Tag color='cyan' shape='circle' prefixIcon={<Image size={14} />}>
+          {t('生成图像')}
         </Tag>
       );
     case TASK_ACTION_GENERATE:
@@ -407,6 +415,8 @@ export const getTaskLogsColumns = ({
           );
         }
 
+        // 图像预览
+        const isImageTask = record.action === TASK_ACTION_IMAGE_GENERATE;
         // 视频预览：优先使用 result_url，兼容旧数据 fail_reason 中的 URL
         const isVideoTask =
           record.action === TASK_ACTION_GENERATE ||
@@ -417,6 +427,13 @@ export const getTaskLogsColumns = ({
         const isSuccess = record.status === 'SUCCESS';
         const resultUrl = record.result_url;
         const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        if (isSuccess && isImageTask && hasResultUrl) {
+          return (
+            <a href={resultUrl} target='_blank' rel='noopener noreferrer'>
+              {t('点击预览图像')}
+            </a>
+          );
+        }
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (
             <a

@@ -91,15 +91,19 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'https://api.mapi.zone',
+        target: process.env.VITE_REACT_APP_SERVER_URL || 'http://localhost:9006',
         changeOrigin: true,
       },
       '/mj': {
-        target: 'https://api.mapi.zone',
+        target: process.env.VITE_REACT_APP_SERVER_URL || 'http://localhost:9006',
         changeOrigin: true,
       },
       '/pg': {
-        target: 'https://api.mapi.zone',
+        target: process.env.VITE_REACT_APP_SERVER_URL || 'http://localhost:9006',
+        changeOrigin: true,
+      },
+      '/v1': {
+        target: process.env.VITE_REACT_APP_SERVER_URL || 'http://localhost:9006',
         changeOrigin: true,
       },
     },
