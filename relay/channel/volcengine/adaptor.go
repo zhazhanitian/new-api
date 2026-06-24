@@ -105,10 +105,60 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	return bytes.NewReader(jsonData), nil
 }
 
+// volcengineImageRequest 是发往火山引擎图像生成 API 的请求结构。
+// 标准 OpenAI 的 n 字段会被映射为 sequential_image_generation / sequential_image_generation_options。
+type volcengineImageRequest struct {
+	Model          string          `json:"model"`
+	Prompt         string          `json:"prompt"`
+	// 图生图 / 多图融合输入，对应 OpenAI 的 image 字段（string 或 string 数组）
+	Image          json.RawMessage `json:"image,omitempty"`
+	Size           string          `json:"size,omitempty"`
+	ResponseFormat string          `json:"response_format,omitempty"`
+	// 仅 doubao-seedream-5-0 支持，可选 "png" / "jpeg"，对应 OpenAI output_format
+	OutputFormat   json.RawMessage `json:"output_format,omitempty"`
+	Watermark      *bool           `json:"watermark,omitempty"`
+	// 渠道专属参数，通过 extra_fields 传入
+	GuidanceScale  *float64        `json:"guidance_scale,omitempty"`
+	// 组图生成参数：n == 1 时不填（单图），n > 1 时由 adaptor 自动填充
+	SequentialImageGeneration        string                                   `json:"sequential_image_generation,omitempty"`
+	SequentialImageGenerationOptions *volcengineSequentialImageGenerationOpts `json:"sequential_image_generation_options,omitempty"`
+}
+
+type volcengineSequentialImageGenerationOpts struct {
+	MaxImages uint `json:"max_images"`
+}
+
+func convertToVolcengineImageRequest(request dto.ImageRequest) volcengineImageRequest {
+	r := volcengineImageRequest{
+		Model:          request.Model,
+		Prompt:         request.Prompt,
+		Image:          request.Image,
+		Size:           request.Size,
+		ResponseFormat: request.ResponseFormat,
+		OutputFormat:   request.OutputFormat,
+		Watermark:      request.Watermark,
+	}
+
+	// 将 extra_fields 中的渠道专属参数合并（如 guidance_scale）
+	if len(request.ExtraFields) > 0 {
+		_ = json.Unmarshal(request.ExtraFields, &r)
+	}
+
+	// n > 1 时映射为组图生成参数；n == 1 或未传时保持单图模式，不传 sequential 参数
+	if request.N != nil && *request.N > 1 {
+		r.SequentialImageGeneration = "auto"
+		r.SequentialImageGenerationOptions = &volcengineSequentialImageGenerationOpts{
+			MaxImages: *request.N,
+		}
+	}
+
+	return r
+}
+
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
 	case constant.RelayModeImagesGenerations:
-		return request, nil
+		return convertToVolcengineImageRequest(request), nil
 	// 根据官方文档,并没有发现豆包生图支持表单请求:https://www.volcengine.com/docs/82379/1824121
 	//case constant.RelayModeImagesEdits:
 	//
