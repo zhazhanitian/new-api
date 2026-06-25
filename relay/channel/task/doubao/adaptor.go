@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -132,7 +133,7 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-// EstimateBilling 检测视频输入折扣和分辨率溢价，返回 OtherRatios。
+// EstimateBilling 检测视频输入折扣、分辨率调价、有声/无声折扣，返回 OtherRatios。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
@@ -147,12 +148,26 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 
-	// 读取 metadata 中的 resolution 字段（如 "1080p"、"720p"）
+	// 读取 resolution：metadata 为低优先级，size 为高优先级，与 convertToRequestPayload 逻辑一致
+	resolution := ""
 	if req.Metadata != nil {
-		if res, ok := req.Metadata["resolution"].(string); ok {
-			if ratio, ok := GetResolutionRatio(info.OriginModelName, res); ok {
-				otherRatios["resolution"] = ratio
-			}
+		resolution, _ = req.Metadata["resolution"].(string)
+	}
+	if req.Size != "" {
+		if res := doubaoResolutionFromSize(req.Size); res != "" {
+			resolution = res
+		}
+	}
+	if resolution != "" {
+		if resRatio, ok := GetResolutionRatio(info.OriginModelName, resolution); ok {
+			otherRatios["resolution"] = resRatio
+		}
+	}
+
+	// 若模型支持有声/无声区分，且请求未开启音频，则应用无声折扣
+	if ratio, ok := GetSilentVideoRatio(info.OriginModelName); ok {
+		if !hasAudioInMetadata(req.Metadata) {
+			otherRatios["silent_video"] = ratio
 		}
 	}
 
@@ -186,6 +201,28 @@ func hasVideoInMetadata(metadata map[string]interface{}) bool {
 		}
 		if _, has := itemMap["video_url"]; has {
 			return true
+		}
+	}
+	return false
+}
+
+// hasAudioInMetadata 检测 metadata 中 generate_audio 是否明确设置为 true。
+// 若字段缺失或为 false，则视为无声视频请求。
+func hasAudioInMetadata(metadata map[string]interface{}) bool {
+	if metadata == nil {
+		return false
+	}
+	val, ok := metadata["generate_audio"]
+	if !ok {
+		return false
+	}
+	switch v := val.(type) {
+	case bool:
+		return v
+	case map[string]interface{}:
+		// dto.BoolValue 序列化后为 {"value": true/false}
+		if bv, ok := v["value"].(bool); ok {
+			return bv
 		}
 	}
 	return false
@@ -306,6 +343,16 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
 
+	// size 覆盖 metadata（高优先级），仅当 size 能推导出有效值时才覆盖
+	if req.Size != "" {
+		if res := doubaoResolutionFromSize(req.Size); res != "" {
+			r.Resolution = res
+		}
+		if rat := doubaoRatioFromSize(req.Size); rat != "" {
+			r.Ratio = rat
+		}
+	}
+
 	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
 	}
@@ -381,4 +428,95 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	}
 
 	return common.Marshal(openAIVideo)
+}
+
+// doubaoResolutionFromSize 从 size 字符串推导豆包 resolution 档位。
+// 支持两种格式：
+//   - "WxH"（如 "1920x1080"）：按短边决定档位
+//   - "Np"（如 "1080p"、"720p"）：直接规范化为豆包枚举值
+//
+// 返回空字符串表示无法识别，保持原有值不变。
+func doubaoResolutionFromSize(size string) string {
+	size = strings.ToLower(strings.TrimSpace(size))
+
+	// "Np" 格式：直接映射
+	switch size {
+	case "4k", "2160p":
+		return "4K"
+	case "1080p":
+		return "1080p"
+	case "720p":
+		return "720p"
+	case "480p":
+		return "480p"
+	}
+
+	// "WxH" 格式
+	parts := strings.FieldsFunc(size, func(r rune) bool { return r == 'x' || r == '*' })
+	if len(parts) != 2 {
+		return ""
+	}
+	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return ""
+	}
+	short := w
+	if h < w {
+		short = h
+	}
+	switch {
+	case short >= 2160:
+		return "4K"
+	case short >= 1080:
+		return "1080p"
+	case short >= 720:
+		return "720p"
+	default:
+		return "480p"
+	}
+}
+
+// doubaoRatioFromSize 从 "WxH" 格式推导宽高比，匹配豆包支持的枚举值。
+// 仅 WxH 格式可推导，Np 格式返回空字符串（无法确定宽高比）。
+// 豆包支持枚举：16:9、9:16、1:1、4:3、3:4、21:9。
+func doubaoRatioFromSize(size string) string {
+	size = strings.ToLower(strings.TrimSpace(size))
+	parts := strings.FieldsFunc(size, func(r rune) bool { return r == 'x' || r == '*' })
+	if len(parts) != 2 {
+		return ""
+	}
+	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return ""
+	}
+
+	// 计算浮点比值，就近匹配豆包支持的宽高比枚举
+	ratio := float64(w) / float64(h)
+	type candidate struct {
+		ratio float64
+		label string
+	}
+	candidates := []candidate{
+		{16.0 / 9.0, "16:9"},
+		{9.0 / 16.0, "9:16"},
+		{1.0, "1:1"},
+		{4.0 / 3.0, "4:3"},
+		{3.0 / 4.0, "3:4"},
+		{21.0 / 9.0, "21:9"},
+	}
+	best := ""
+	bestDiff := 1e9
+	for _, c := range candidates {
+		diff := ratio - c.ratio
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff < bestDiff {
+			bestDiff = diff
+			best = c.label
+		}
+	}
+	return best
 }
