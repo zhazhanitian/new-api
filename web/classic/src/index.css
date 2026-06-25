@@ -1024,3 +1024,46 @@ html.dark .with-pastel-balls::before {
 }
 
 .ec-dbcd0a3c01b55203 { forced-color-adjust: auto; }
+
+/* ==================== 首页动画 ==================== */
+/* Hero 入场动画 */
+@keyframes home-fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.home-anim {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: home-fade-up 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.home-anim-d1 { animation-delay: 0.05s; }
+.home-anim-d2 { animation-delay: 0.16s; }
+.home-anim-d3 { animation-delay: 0.28s; }
+.home-anim-d4 { animation-delay: 0.40s; }
+.home-anim-d5 { animation-delay: 0.52s; }
+.home-anim-d6 { animation-delay: 0.62s; }
+
+/* 滚动触发渐入 */
+.home-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.home-reveal.home-revealed { opacity: 1; transform: translateY(0); }
+
+/* MAPI 水印浮动 */
+@keyframes home-wordmark-float {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%       { transform: translateX(-50%) translateY(-8px); }
+}
+.home-wordmark-float { animation: home-wordmark-float 7s ease-in-out infinite; }
+
+/* 关闭动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .home-anim { animation: none; opacity: 1; transform: none; }
+  .home-reveal { transition: none; opacity: 1; transform: none; }
+  .home-wordmark-float { animation: none; }
+}

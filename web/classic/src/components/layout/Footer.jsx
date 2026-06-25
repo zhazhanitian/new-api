@@ -188,11 +188,21 @@ const FooterBar = () => {
           </div>
         )}
 
-        <div className='flex flex-col md:flex-row items-center justify-between w-full max-w-[1110px] gap-6'>
+        <div className='flex flex-col md:flex-row items-center justify-between w-full max-w-[1110px] gap-4'>
           <div className='flex flex-wrap items-center gap-2'>
             <Typography.Text className='text-sm !text-semi-color-text-1'>
-              © {currentYear} {systemName}. {t('版权所有')}
+              © {currentYear} 南京白鲸汇智能科技有限公司. {t('版权所有')}
             </Typography.Text>
+          </div>
+          <div className='flex flex-wrap items-center gap-4 text-sm !text-semi-color-text-2'>
+            <a
+              href='https://beian.miit.gov.cn/'
+              target='_blank'
+              rel='noopener noreferrer'
+              className='!text-semi-color-text-2 hover:!text-semi-color-text-1 transition-colors'
+            >
+              苏ICP备2026028558号-1
+            </a>
           </div>
         </div>
       </footer>
@@ -213,18 +223,26 @@ const FooterBar = () => {
               className='custom-footer na-cb6feafeb3990c78 text-sm !text-semi-color-text-1'
               dangerouslySetInnerHTML={{ __html: footer }}
             ></div>
-            <div className='text-sm flex-shrink-0'>
-              <span className='!text-semi-color-text-1'>
-                {t('设计与开发由')}{' '}
-              </span>
+            <div className='flex flex-wrap items-center gap-4 text-sm flex-shrink-0'>
               <a
-                href='https://github.com/QuantumNous/new-api'
+                href='https://beian.miit.gov.cn/'
                 target='_blank'
                 rel='noopener noreferrer'
-                className='!text-semi-color-primary font-medium'
+                className='!text-semi-color-text-2 hover:!text-semi-color-text-1 transition-colors'
               >
-                New API
+                苏ICP备2026028558号-1
               </a>
+              <span className='!text-semi-color-text-2'>
+                {t('设计与开发由')}{' '}
+                <a
+                  href='https://github.com/QuantumNous/new-api'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='!text-semi-color-primary font-medium'
+                >
+                  New API
+                </a>
+              </span>
             </div>
           </div>
         </footer>

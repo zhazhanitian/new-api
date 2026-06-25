@@ -1,0 +1,27 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="92" y1="94" x2="1108" y2="806" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FFFB"/>
+      <stop offset="1" stop-color="#EEF8F4"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="320" y1="534" x2="877" y2="325" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00B42A"/>
+      <stop offset="1" stop-color="#36CFC9"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="900" rx="48" fill="#F5F7FA"/>
+  <rect x="64" y="64" width="1072" height="772" rx="36" fill="url(#bg)" stroke="#DCEDE4" stroke-width="2"/>
+  <rect x="128" y="128" width="944" height="644" rx="30" fill="#FFFFFF" fill-opacity="0.82" stroke="#D7ECE2"/>
+  <rect x="188" y="188" width="196" height="18" rx="9" fill="#D5F4E3"/>
+  <rect x="188" y="224" width="126" height="18" rx="9" fill="#E7F5EE"/>
+  <path d="M258 522C258 508 269 496 283 496H305C319 496 330 508 330 522V560C330 574 319 586 305 586H283C269 586 258 574 258 560V522Z" fill="url(#wave)"/>
+  <path d="M362 472C362 458 373 446 387 446H409C423 446 434 458 434 472V610C434 624 423 636 409 636H387C373 636 362 624 362 610V472Z" fill="url(#wave)"/>
+  <path d="M466 396C466 382 477 370 491 370H513C527 370 538 382 538 396V686C538 700 527 712 513 712H491C477 712 466 700 466 686V396Z" fill="url(#wave)"/>
+  <path d="M570 430C570 416 581 404 595 404H617C631 404 642 416 642 430V652C642 666 631 678 617 678H595C581 678 570 666 570 652V430Z" fill="url(#wave)"/>
+  <path d="M674 340C674 326 685 314 699 314H721C735 314 746 326 746 340V742C746 756 735 768 721 768H699C685 768 674 756 674 742V340Z" fill="url(#wave)"/>
+  <path d="M778 460C778 446 789 434 803 434H825C839 434 850 446 850 460V622C850 636 839 648 825 648H803C789 648 778 636 778 622V460Z" fill="url(#wave)"/>
+  <path d="M882 510C882 496 893 484 907 484H929C943 484 954 496 954 510V572C954 586 943 598 929 598H907C893 598 882 586 882 572V510Z" fill="url(#wave)"/>
+  <circle cx="914" cy="250" r="56" fill="#36CFC9" fill-opacity="0.14"/>
+  <rect x="188" y="708" width="248" height="18" rx="9" fill="#DCEEE4"/>
+  <rect x="188" y="744" width="338" height="18" rx="9" fill="#E6F3EC"/>
+</svg>
