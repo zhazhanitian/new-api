@@ -269,13 +269,13 @@ const CAPABILITIES = [
 ];
 
 const PROVIDERS = [
-  <Moonshot key='ms' size={28} />, <OpenAI key='oa' size={28} />, <XAI key='xai' size={28} />,
-  <Zhipu.Color key='zp' size={28} />, <Volcengine.Color key='ve' size={28} />, <Cohere.Color key='ch' size={28} />,
-  <Claude.Color key='cl' size={28} />, <Gemini.Color key='gm' size={28} />, <Suno key='su' size={28} />,
-  <Minimax.Color key='mm' size={28} />, <Wenxin.Color key='wx' size={28} />, <Spark.Color key='sp' size={28} />,
-  <Qingyan.Color key='qy' size={28} />, <DeepSeek.Color key='ds' size={28} />, <Qwen.Color key='qw' size={28} />,
-  <Midjourney key='mj' size={28} />, <Grok key='gk' size={28} />, <AzureAI.Color key='az' size={28} />,
-  <Hunyuan.Color key='hy' size={28} />, <Xinference.Color key='xi' size={28} />,
+  <Moonshot key='ms' size={44} />, <OpenAI key='oa' size={44} />, <XAI key='xai' size={44} />,
+  <Zhipu.Color key='zp' size={44} />, <Volcengine.Color key='ve' size={44} />, <Cohere.Color key='ch' size={44} />,
+  <Claude.Color key='cl' size={44} />, <Gemini.Color key='gm' size={44} />, <Suno key='su' size={44} />,
+  <Minimax.Color key='mm' size={44} />, <Wenxin.Color key='wx' size={44} />, <Spark.Color key='sp' size={44} />,
+  <Qingyan.Color key='qy' size={44} />, <DeepSeek.Color key='ds' size={44} />, <Qwen.Color key='qw' size={44} />,
+  <Midjourney key='mj' size={44} />, <Grok key='gk' size={44} />, <AzureAI.Color key='az' size={44} />,
+  <Hunyuan.Color key='hy' size={44} />, <Xinference.Color key='xi' size={44} />,
 ];
 
 /* ─────────────────────────────────────────────────────
@@ -414,8 +414,9 @@ const Home = () => {
           MAPI
         </div>
 
+        {/* V1 同款 hero center：宽度 min(100%,880px) */}
         <div
-          className='relative z-10 mx-auto flex max-w-[1400px] flex-col items-center px-12 text-center'
+          className='relative z-10 mx-auto w-full max-w-[880px] px-6 text-center'
           style={{ paddingTop: isMobile ? 80 : 110, paddingBottom: isMobile ? 64 : 80 }}
         >
           {/* Badge */}
@@ -423,23 +424,23 @@ const Home = () => {
             MAPI · AI 模型 API 聚合平台
           </div>
 
-          {/* 主标题 — 两行各自锁定单行 */}
+          {/* 主标题 — 完全对照 V1：74px / letter-spacing -0.065em */}
           <h1
-            className='home-anim home-anim-d2 font-extrabold leading-[1.1] tracking-tight text-semi-color-text-0'
+            className='home-anim home-anim-d2 w-full font-bold text-semi-color-text-0'
             style={{
-              fontSize: 'clamp(34px, 4.6vw, 66px)',
-              letterSpacing: '-0.03em',
-              marginBottom: 'clamp(16px, 2vw, 24px)',
+              fontSize: isMobile ? '36px' : '74px',
+              lineHeight: 0.96,
+              letterSpacing: '-0.065em',
+              maxWidth: 860,
+              margin: '0 auto',
+              marginBottom: 'clamp(20px, 2.5vw, 32px)',
             }}
           >
-            <span style={{ display: 'block', whiteSpace: 'nowrap' }}>
-              统一接入主流 AI 模型
-            </span>
-            <span
-              className='shine-text'
-              style={{ display: 'block', whiteSpace: 'nowrap', color: 'var(--semi-color-primary)' }}
-            >
-              一套 API，完成接入与治理
+            <span style={{ display: 'block' }}>统一接入主流 AI 模型</span>
+            <span style={{ display: 'block', marginTop: 6 }}>
+              <span className='shine-text' style={{ color: 'var(--semi-color-primary)' }}>
+                一套 API 完成接入与治理
+              </span>
             </span>
           </h1>
 
@@ -450,6 +451,7 @@ const Home = () => {
               fontSize: 'clamp(15px, 1.4vw, 18px)',
               lineHeight: 1.8,
               maxWidth: 640,
+              margin: '0 auto',
               marginBottom: 'clamp(24px, 3vw, 40px)',
             }}
           >
@@ -460,7 +462,7 @@ const Home = () => {
           {/* BASE URL */}
           <div
             className='home-anim home-anim-d4 w-full'
-            style={{ maxWidth: 560, marginBottom: 'clamp(20px, 2.5vw, 32px)' }}
+            style={{ maxWidth: 560, margin: '0 auto', marginBottom: 'clamp(20px, 2.5vw, 32px)' }}
           >
             <p className='mb-3 text-xs font-semibold uppercase tracking-wider text-semi-color-text-2'>
               多模型统一接入，只需将基址替换为：
@@ -621,10 +623,10 @@ const Home = () => {
         {/* 3 个特性小卡 */}
         <div className='grid gap-4 md:grid-cols-3'>
           {ADVANTAGES.map((a, i) => (
-            <Reveal key={a.num} delay={i * 80} className='h-full'>
+            <Reveal key={a.num} delay={i * 80}>
               <div
-                className='flex h-full flex-col rounded-2xl border border-semi-color-border bg-semi-color-bg-1 p-7 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg'
-                style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}
+                className='flex flex-col rounded-2xl border border-semi-color-border bg-semi-color-bg-1 p-7 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg'
+                style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.04)', height: '100%' }}
               >
                 <div
                   className='mb-5 inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-extrabold'
@@ -656,10 +658,10 @@ const Home = () => {
             </Link>
           }
         />
-        <div className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4'>
+        <div className='grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4' style={{ alignItems: 'stretch' }}>
           {CAPABILITIES.map((c, i) => (
-            <Reveal key={c.title} delay={i * 60} className='h-full'>
-              <Link to='/pricing' className='group flex h-full'>
+            <Reveal key={c.title} delay={i * 60}>
+              <Link to='/pricing' className='group flex h-full' style={{ height: '100%' }}>
                 <div
                   className='relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-semi-color-border bg-semi-color-bg-1 p-3 transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-[0_18px_40px_rgba(15,23,42,0.10)]'
                   style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}
@@ -711,40 +713,32 @@ const Home = () => {
       </section>
 
       {/* ══════════════════════════════════════
-          §6  模型供应商
+          §6  模型供应商 — 无限横向滚动轮播
       ══════════════════════════════════════ */}
-      <section className={`border-t border-semi-color-border py-16`}>
-        <div className={W}>
-          <SectionHead
-            kicker='Supported Providers'
-            title='支持众多大模型供应商'
-            subtitle='持续扩展中，覆盖国内外主流模型平台。'
-          />
-        </div>
+      <section className={`${W} border-t border-semi-color-border py-16`}>
+        <SectionHead
+          kicker='Supported Providers'
+          title='支持众多大模型供应商'
+          subtitle='持续扩展中，覆盖国内外主流模型平台。'
+        />
         <Reveal>
+          {/* 在内容区宽度内 overflow，两侧渐隐 */}
           <div
-            className='mx-auto max-w-[1400px] overflow-hidden rounded-2xl border border-semi-color-border px-6 py-8 md:px-12 md:py-10'
+            className='overflow-hidden'
             style={{
-              background: 'linear-gradient(180deg, var(--semi-color-bg-1) 0%, var(--semi-color-bg-0) 100%)',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+              maskImage: 'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
             }}
           >
-            <div className='flex flex-wrap items-center justify-center gap-3 md:gap-4'>
-              {PROVIDERS.map((icon, i) => (
+            <div className='providers-track py-2'>
+              {[...PROVIDERS, ...PROVIDERS].map((icon, i) => (
                 <div
                   key={i}
-                  className='flex h-14 w-14 items-center justify-center rounded-xl border border-semi-color-border bg-semi-color-bg-0 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md'
+                  className='mx-3 flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-2xl border border-semi-color-border bg-semi-color-bg-1 transition-all duration-200 hover:-translate-y-1 hover:shadow-md'
                 >
                   {icon}
                 </div>
               ))}
-              <div
-                className='flex h-14 w-14 flex-col items-center justify-center rounded-xl border border-semi-color-border bg-semi-color-fill-0'
-                title='更多供应商持续接入中'
-              >
-                <Text className='!text-base !font-extrabold !leading-none !text-semi-color-primary'>30+</Text>
-                <Text className='mt-0.5 !text-[10px] !text-semi-color-text-2'>更多</Text>
-              </div>
             </div>
           </div>
         </Reveal>

@@ -1054,6 +1054,18 @@ html.dark .with-pastel-balls::before {
 }
 .home-reveal.home-revealed { opacity: 1; transform: translateY(0); }
 
+/* 供应商无限滚动 */
+@keyframes providers-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.providers-track {
+  display: flex;
+  width: max-content;
+  animation: providers-scroll 28s linear infinite;
+}
+.providers-track:hover { animation-play-state: paused; }
+
 /* MAPI 水印浮动 */
 @keyframes home-wordmark-float {
   0%, 100% { transform: translateX(-50%) translateY(0); }
