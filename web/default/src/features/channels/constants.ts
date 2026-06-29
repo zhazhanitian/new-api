@@ -77,6 +77,7 @@ export const CHANNEL_TYPES = {
   56: 'Replicate',
   57: 'Codex',
   58: 'TencentVOD',
+  59: 'JoyAgent',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
@@ -394,6 +395,7 @@ export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
   51: 'Format: Access Key ID|Secret Access Key',
   57: 'Paste Codex OAuth JSON credential (access_token / refresh_token / account_id)',
   58: 'Format: SubAppId|SecretId|SecretKey (SubAppId is 0 for main app)',
+  59: 'JoyAgent API Key (Bearer token from agentrs.jd.com)',
 }
 
 export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {

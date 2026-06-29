@@ -77,6 +77,16 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeCodex
 	case constant.ChannelTypeTencentVOD:
 		apiType = constant.APITypeTencentVOD
+	case constant.ChannelTypeKling:
+		apiType = constant.APITypeKling
+	case constant.ChannelTypeVidu:
+		apiType = constant.APITypeVidu
+	case constant.ChannelTypeDoubaoVideo:
+		apiType = constant.APITypeDoubaoVideo
+	case constant.ChannelTypeSora:
+		apiType = constant.APITypeSora
+	case constant.ChannelTypeJoyAgent:
+		apiType = constant.APITypeJoyAgent
 	}
 	if apiType == -1 {
 		return constant.APITypeOpenAI, false

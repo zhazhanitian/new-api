@@ -2081,6 +2081,17 @@ export function ChannelMutateDrawer({
                   </div>
                 )}
 
+                {currentType === 59 && (
+                  <div className='bg-muted/20 space-y-1 rounded-lg border p-4'>
+                    <div className='text-sm font-semibold'>
+                      {t('JoyAgent API Key Format')}
+                    </div>
+                    <div className='text-muted-foreground text-xs'>
+                      {t('Single Bearer token from the JoyAgent platform (agentrs.jd.com). No separator needed.')}
+                    </div>
+                  </div>
+                )}
+
                 {isEditing && isMultiKeyChannel && (
                   <FormField
                     control={form.control}

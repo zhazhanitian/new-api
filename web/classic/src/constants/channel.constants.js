@@ -194,6 +194,11 @@ export const CHANNEL_OPTIONS = [
     color: 'blue',
     label: 'TencentVOD',
   },
+  {
+    value: 59,
+    color: 'blue',
+    label: 'JoyAgent',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.

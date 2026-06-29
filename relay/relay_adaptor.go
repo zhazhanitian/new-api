@@ -35,12 +35,13 @@ import (
 	taskGemini "github.com/QuantumNous/new-api/relay/channel/task/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/task/hailuo"
 	taskjimeng "github.com/QuantumNous/new-api/relay/channel/task/jimeng"
+	joyagent "github.com/QuantumNous/new-api/relay/channel/task/joyagent"
 	"github.com/QuantumNous/new-api/relay/channel/task/kling"
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
 	"github.com/QuantumNous/new-api/relay/channel/task/suno"
+	tencentvod "github.com/QuantumNous/new-api/relay/channel/task/tencentvod"
 	taskvertex "github.com/QuantumNous/new-api/relay/channel/task/vertex"
 	taskVidu "github.com/QuantumNous/new-api/relay/channel/task/vidu"
-	tencentvod "github.com/QuantumNous/new-api/relay/channel/task/tencentvod"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/relay/channel/volcengine"
@@ -123,6 +124,13 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &codex.Adaptor{}
 	case constant.APITypeTencentVOD:
 		return &tencentvod.Adaptor{}
+	case constant.APITypeKling,
+		constant.APITypeVidu,
+		constant.APITypeDoubaoVideo,
+		constant.APITypeSora:
+		return &openai.Adaptor{} // video-only channels; sync calls not supported
+	case constant.APITypeJoyAgent:
+		return &joyagent.Adaptor{}
 	}
 	return nil
 }
@@ -164,6 +172,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &hailuo.TaskAdaptor{}
 		case constant.ChannelTypeTencentVOD:
 			return &tencentvod.TaskAdaptor{}
+		case constant.ChannelTypeJoyAgent:
+			return &joyagent.TaskAdaptor{}
 		}
 	}
 	return nil

@@ -37,5 +37,10 @@ const (
 	APITypeReplicate
 	APITypeCodex
 	APITypeTencentVOD
+	APITypeKling
+	APITypeVidu
+	APITypeDoubaoVideo
+	APITypeSora
+	APITypeJoyAgent
 	APITypeDummy // this one is only for count, do not add any channel after this
 )

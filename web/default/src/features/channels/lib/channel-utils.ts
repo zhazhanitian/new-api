@@ -102,6 +102,7 @@ export function getChannelTypeIcon(type: number): string {
     54: 'Doubao', // DoubaoVideo
     56: 'Replicate', // Replicate
     58: 'Tencent', // TencentVOD
+    59: 'Qwen',   // JoyAgent (Alibaba-backed)
 
     // Tools & Platforms
     37: 'Dify', // Dify

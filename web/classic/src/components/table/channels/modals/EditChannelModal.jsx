@@ -2650,6 +2650,17 @@ const EditChannelModal = (props) => {
                       />
                     )}
 
+                    {inputs.type === 59 && (
+                      <Banner
+                        type='info'
+                        closeIcon={null}
+                        className='mb-4 rounded-xl'
+                        description={t(
+                          'API Key 格式：Bearer Token，即京东 JoyAgent 平台（agentrs.jd.com）颁发的访问凭证，直接填写 token 字符串即可。',
+                        )}
+                      />
+                    )}
+
                     {inputs.type === 20 && (
                       <Form.Switch
                         field='is_enterprise_account'
