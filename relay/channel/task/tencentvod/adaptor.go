@@ -89,6 +89,26 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 
+	// 参考图：优先从 images（数组）读取，再兼容 image（单图字符串）
+	var refURLs []string
+	if len(request.Images) > 0 {
+		var urls []string
+		if err := common.Unmarshal(request.Images, &urls); err == nil {
+			refURLs = urls
+		}
+	}
+	if len(refURLs) == 0 && len(request.Image) > 0 {
+		var singleURL string
+		if err := common.Unmarshal(request.Image, &singleURL); err == nil && singleURL != "" {
+			refURLs = []string{singleURL}
+		}
+	}
+	for _, url := range refURLs {
+		if strings.TrimSpace(url) != "" {
+			body.FileInfos = append(body.FileInfos, fileInfo{Type: "Url", Url: url})
+		}
+	}
+
 	return body, nil
 }
 
@@ -196,6 +216,25 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		Created: common.GetTimestamp(),
 		Data:    []dto.ImageData{},
 	}
+
+	// 从原始请求中回填 quality / size / output_format / background
+	if imageReq, ok := info.Request.(*dto.ImageRequest); ok {
+		imageResponse.Quality = imageReq.Quality
+		imageResponse.Size = imageReq.Size
+		if len(imageReq.OutputFormat) > 0 {
+			var ofStr string
+			if err := common.Unmarshal(imageReq.OutputFormat, &ofStr); err == nil && ofStr != "" {
+				imageResponse.OutputFormat = ofStr
+			}
+		}
+		if len(imageReq.Background) > 0 {
+			var bgStr string
+			if err := common.Unmarshal(imageReq.Background, &bgStr); err == nil && bgStr != "" {
+				imageResponse.Background = bgStr
+			}
+		}
+	}
+
 	if descResp.Response.AigcImageTask != nil && descResp.Response.AigcImageTask.Output != nil {
 		for _, fi := range descResp.Response.AigcImageTask.Output.FileInfos {
 			imageResponse.Data = append(imageResponse.Data, dto.ImageData{Url: fi.FileUrl})
@@ -203,6 +242,23 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	}
 	if len(imageResponse.Data) == 0 {
 		return nil, types.NewError(errors.New("tencentvod: no images in response"), types.ErrorCodeBadResponseBody)
+	}
+
+	// 腾讯 VOD 接口不返回 token 用量，按生图惯例用 prompt 字符数做占位估算
+	promptTokens := 0
+	if imageReq, ok := info.Request.(*dto.ImageRequest); ok {
+		promptTokens = len([]rune(imageReq.Prompt))
+	}
+	imageResponse.Usage = &dto.ImageUsage{
+		InputTokens: promptTokens,
+		InputTokensDetails: &dto.ImageTokensDetails{
+			TextTokens: promptTokens,
+		},
+		OutputTokens: 1,
+		OutputTokensDetails: &dto.ImageTokensDetails{
+			ImageTokens: 1,
+		},
+		TotalTokens: promptTokens + 1,
 	}
 
 	respBytes, err := common.Marshal(imageResponse)
@@ -214,7 +270,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	c.Writer.WriteHeader(http.StatusOK)
 	_, _ = c.Writer.Write(respBytes)
 
-	return &dto.Usage{}, nil
+	return &dto.Usage{PromptTokens: promptTokens, TotalTokens: promptTokens + 1}, nil
 }
 
 // describeTask calls DescribeTaskDetail and returns the parsed response.

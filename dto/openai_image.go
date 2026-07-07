@@ -173,12 +173,31 @@ func (i *ImageRequest) SetModelName(modelName string) {
 }
 
 type ImageResponse struct {
-	Data     []ImageData     `json:"data"`
-	Created  int64           `json:"created"`
-	Metadata json.RawMessage `json:"metadata,omitempty"`
+	Created      int64           `json:"created"`
+	Data         []ImageData     `json:"data"`
+	Background   string          `json:"background,omitempty"`
+	OutputFormat string          `json:"output_format,omitempty"`
+	Quality      string          `json:"quality,omitempty"`
+	Size         string          `json:"size,omitempty"`
+	Usage        *ImageUsage     `json:"usage,omitempty"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
 }
+
 type ImageData struct {
 	Url           string `json:"url"`
 	B64Json       string `json:"b64_json"`
 	RevisedPrompt string `json:"revised_prompt"`
+}
+
+type ImageUsage struct {
+	InputTokens         int                  `json:"input_tokens"`
+	InputTokensDetails  *ImageTokensDetails  `json:"input_tokens_details,omitempty"`
+	OutputTokens        int                  `json:"output_tokens"`
+	OutputTokensDetails *ImageTokensDetails  `json:"output_tokens_details,omitempty"`
+	TotalTokens         int                  `json:"total_tokens"`
+}
+
+type ImageTokensDetails struct {
+	ImageTokens int `json:"image_tokens"`
+	TextTokens  int `json:"text_tokens"`
 }

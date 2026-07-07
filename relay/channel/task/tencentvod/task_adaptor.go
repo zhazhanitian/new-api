@@ -26,11 +26,21 @@ type outputConfig struct {
 	AspectRatio string `json:"AspectRatio,omitempty"`
 }
 
+// fileInfo 对应腾讯 VOD API 的 AigcImageTaskInputFileInfo
+// Type 取值：File（VOD文件ID）| Url（外部可访问URL）| Base64（Base64字符串）
+type fileInfo struct {
+	Type   string `json:"Type,omitempty"`
+	FileId string `json:"FileId,omitempty"`
+	Url    string `json:"Url,omitempty"`
+	Base64 string `json:"Base64,omitempty"`
+}
+
 type createTaskRequest struct {
 	SubAppId       int64         `json:"SubAppId,omitempty"`
 	ModelName      string        `json:"ModelName"`
 	ModelVersion   string        `json:"ModelVersion"`
 	Prompt         string        `json:"Prompt"`
+	FileInfos      []fileInfo    `json:"FileInfos,omitempty"`
 	OutputConfig   *outputConfig `json:"OutputConfig,omitempty"`
 	Seed           int64         `json:"Seed,omitempty"`
 	NegativePrompt string        `json:"NegativePrompt,omitempty"`
@@ -164,6 +174,13 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		}
 	} else {
 		body.OutputConfig = &outputConfig{AspectRatio: sizeToAspectRatio(taskReq.Size)}
+	}
+
+	// 参考图：从 taskReq.Images 读取（单图 image 字段已在 ValidateBasicTaskRequest 里自动合并进 Images）
+	for _, url := range taskReq.Images {
+		if strings.TrimSpace(url) != "" {
+			body.FileInfos = append(body.FileInfos, fileInfo{Type: "Url", Url: url})
+		}
 	}
 
 	data, err := common.Marshal(body)
