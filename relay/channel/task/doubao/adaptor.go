@@ -353,8 +353,14 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		}
 	}
 
+	// duration 优先级：seconds（OpenAI 风格）> duration（标准字段）> metadata（已在上方 UnmarshalMetadata 处理）
+	// 显式指定 duration 时清除 frames，避免上游 API 因 frames 优先级更高而忽略 duration。
 	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
+		r.Frames = nil
+	} else if req.Duration > 0 {
+		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+		r.Frames = nil
 	}
 
 	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
