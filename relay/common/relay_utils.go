@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -196,6 +197,13 @@ func isKnownTaskField(field string) bool {
 }
 
 func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *dto.TaskError {
+	// 已由前置步骤（ValidateImageTaskRequest）解析并存入 context，跳过重复解析
+	if _, exists := c.Get("task_request"); exists {
+		if info.Action == "" {
+			info.Action = action
+		}
+		return nil
+	}
 	var err error
 	contentType := c.GetHeader("Content-Type")
 	var req TaskSubmitReq
@@ -220,5 +228,77 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 	}
 
 	storeTaskRequest(c, info, action, req)
+	return nil
+}
+
+// ValidateImageTaskRequest 专用于 POST /v2/image-tasks（ImageRequest → TaskSubmitReq）。
+// 解析 OpenAI 兼容的 ImageRequest，转换为内部 TaskSubmitReq 后存入 context；
+// 下游 adaptor 通过 GetTaskRequest 取出，无需感知入口格式。
+func ValidateImageTaskRequest(c *gin.Context, info *RelayInfo) *dto.TaskError {
+	var imgReq dto.ImageRequest
+	if err := common.UnmarshalBodyReusable(c, &imgReq); err != nil {
+		return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+	}
+	if strings.TrimSpace(imgReq.Prompt) == "" {
+		return createTaskError(fmt.Errorf("prompt is required"), "invalid_request", http.StatusBadRequest, true)
+	}
+
+	req := TaskSubmitReq{
+		Model:          imgReq.Model,
+		Prompt:         imgReq.Prompt,
+		Size:           imgReq.Size,
+		Quality:        imgReq.Quality,
+		ResponseFormat: imgReq.ResponseFormat,
+		Metadata:       make(map[string]interface{}),
+	}
+	if imgReq.N != nil {
+		req.N = int(*imgReq.N)
+	}
+	// style: json.RawMessage → string
+	if len(imgReq.Style) > 0 {
+		var s string
+		if json.Unmarshal(imgReq.Style, &s) == nil {
+			req.Style = s
+		}
+	}
+	// output_format: json.RawMessage → string
+	if len(imgReq.OutputFormat) > 0 {
+		var s string
+		if json.Unmarshal(imgReq.OutputFormat, &s) == nil {
+			req.OutputFormat = s
+		}
+	}
+	// output_compression: json.RawMessage → int
+	if len(imgReq.OutputCompression) > 0 {
+		var v int
+		if json.Unmarshal(imgReq.OutputCompression, &v) == nil {
+			req.OutputCompression = v
+		}
+	}
+	// images: json.RawMessage → []string（静默失败，不影响主流程）
+	if len(imgReq.Images) > 0 {
+		var urls []string
+		if json.Unmarshal(imgReq.Images, &urls) == nil {
+			req.Images = urls
+		}
+	}
+	// image（单图）→ 合并进 Images
+	if len(imgReq.Image) > 0 {
+		var s string
+		if json.Unmarshal(imgReq.Image, &s) == nil && s != "" && len(req.Images) == 0 {
+			req.Images = []string{s}
+		}
+	}
+	// extra_fields → Metadata（渠道私有扩展参数通道，与同步接口 ConvertImageRequest 读取 ExtraFields 保持对称）
+	if len(imgReq.ExtraFields) > 0 {
+		var extraMap map[string]interface{}
+		if json.Unmarshal(imgReq.ExtraFields, &extraMap) == nil {
+			for k, v := range extraMap {
+				req.Metadata[k] = v
+			}
+		}
+	}
+
+	storeTaskRequest(c, info, constant.TaskActionImageGenerate, req)
 	return nil
 }

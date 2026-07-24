@@ -569,7 +569,53 @@ func RelayTask(c *gin.Context) {
 		logger.LogInfo(c, retryLogStr)
 	}
 
-	// ── 成功：结算 + 日志 + 插入任务 ──
+	// ── 后台任务分支：上游为同步 API（如 Volcengine 图片生成） ──
+	// 立即返回 task_id，生成在 goroutine 中完成。
+	if taskErr == nil && result.BackgroundAdaptor != nil {
+		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+			common.SysError("settle background task billing error: " + settleErr.Error())
+		}
+		service.LogTaskConsumption(c, relayInfo)
+
+		bgTask := model.InitTask(result.Platform, relayInfo)
+		bgTask.Status = model.TaskStatusQueued
+		bgTask.Progress = "0%"
+		bgTask.PrivateData.BillingSource = relayInfo.BillingSource
+		bgTask.PrivateData.SubscriptionId = relayInfo.SubscriptionId
+		bgTask.PrivateData.TokenId = relayInfo.TokenId
+		bgTask.PrivateData.BillingContext = &model.TaskBillingContext{
+			ModelPrice:      relayInfo.PriceData.ModelPrice,
+			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+			ModelRatio:      relayInfo.PriceData.ModelRatio,
+			OtherRatios:     relayInfo.PriceData.OtherRatios,
+			OriginModelName: relayInfo.OriginModelName,
+			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			RequestedN:      taskRequestedN(c, relayInfo),
+		}
+		bgTask.Quota = result.Quota
+		bgTask.Action = relayInfo.Action
+		if insertErr := bgTask.Insert(); insertErr != nil {
+			common.SysError("insert background task error: " + insertErr.Error())
+		}
+
+		c.JSON(http.StatusOK, dto.TaskResponse[any]{
+			Code: "success",
+			Data: dto.ImageTaskDto{
+				TaskID:   bgTask.TaskID,
+				Status:   string(model.TaskStatusQueued),
+				Progress: "0%",
+				Model:    relayInfo.OriginModelName,
+				Images:   []dto.ImageItem{},
+			},
+		})
+
+		bgAdaptor := result.BackgroundAdaptor
+		bgInfo := relayInfo
+		go relay.RunBackgroundTask(bgTask, bgAdaptor, bgInfo)
+		return
+	}
+
+	// ── 普通成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
 		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 			common.SysError("settle task billing error: " + settleErr.Error())
@@ -588,12 +634,29 @@ func RelayTask(c *gin.Context) {
 			OtherRatios:     relayInfo.PriceData.OtherRatios,
 			OriginModelName: relayInfo.OriginModelName,
 			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			RequestedN:      taskRequestedN(c, relayInfo),
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+		}
+
+		// v2 图片任务接口：DoResponse 已跳过响应写入，由此处统一返回 ImageTaskDto。
+		// 旧接口（/v1/image-tasks/submit、视频类任务接口）走 DoResponse 自行响应，不受影响。
+		if relayInfo.RelayMode == relayconstant.RelayModeImageTaskSubmit {
+			c.JSON(http.StatusOK, dto.TaskResponse[any]{
+				Code: "success",
+				Data: dto.ImageTaskDto{
+					TaskID:   task.TaskID,
+					Status:   string(task.Status),
+					Progress: task.Progress,
+					Model:    relayInfo.OriginModelName,
+					Images:   []dto.ImageItem{},
+				},
+			})
+			return
 		}
 	}
 
@@ -650,4 +713,17 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	return true
+}
+
+// taskRequestedN 从任务提交请求中提取 n（生成图片数），默认 1。
+// 保存到 BillingContext.RequestedN 供轮询阶段比例退款使用。
+// 优先读 BackgroundTaskReq（后台任务），回退到 gin context 的 task_request（轮询任务）。
+func taskRequestedN(c *gin.Context, info *relaycommon.RelayInfo) int {
+	if req := info.BackgroundTaskReq; req != nil && req.N > 0 {
+		return req.N
+	}
+	if req, err := relaycommon.GetTaskRequest(c); err == nil && req.N > 0 {
+		return req.N
+	}
+	return 1
 }

@@ -2,6 +2,8 @@ package doubao
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,9 +15,11 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
+	"github.com/QuantumNous/new-api/relay/channel/volcengine"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 
@@ -248,6 +252,8 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
+	url, _ := a.BuildRequestURL(info)
+	logger.LogInfo(c, fmt.Sprintf("[doubao-video] submit request: url=%s body=%s", url, string(data)))
 	return bytes.NewReader(data), nil
 }
 
@@ -264,6 +270,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 	_ = resp.Body.Close()
+	logger.LogInfo(c, fmt.Sprintf("[doubao-video] submit response: status=%d body=%s", resp.StatusCode, string(responseBody)))
 
 	// Parse Doubao response
 	var dResp responsePayload
@@ -373,6 +380,7 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
+	common.SysLog(fmt.Sprintf("[doubao-video] poll response: body=%s", string(respBody)))
 	resTask := responseTask{}
 	if err := common.Unmarshal(respBody, &resTask); err != nil {
 		return nil, errors.Wrap(err, "unmarshal task result failed")
@@ -525,4 +533,152 @@ func doubaoRatioFromSize(size string) string {
 		}
 	}
 	return best
+}
+
+// ============================================================
+// BackgroundTaskAdaptor — synchronous image generation support
+// Volcengine seedream models use a synchronous API; we wrap
+// them as async tasks using a background goroutine.
+// ============================================================
+
+// IsBackgroundSubmit returns true for Volcengine image generation models (seedream).
+// These models use a synchronous API unlike the seedance video models (async).
+func (a *TaskAdaptor) IsBackgroundSubmit(modelName string) bool {
+	return strings.Contains(strings.ToLower(modelName), "seedream")
+}
+
+// ExecuteBackgroundTask calls the Volcengine image generation API synchronously.
+// 请求结构通过 volcengine.ConvertToImageGenRequest 构建，与同步接口（/v1/images/generations）
+// 走完全相同的请求格式，返回 dto.ImageResponse（也与同步接口一致）。
+// MUST NOT write to gin.Context — called from a background goroutine.
+func (a *TaskAdaptor) ExecuteBackgroundTask(info *relaycommon.RelayInfo) (resultURL string, responseBody []byte, err error) {
+	req := info.BackgroundTaskReq
+	if req == nil {
+		return "", nil, fmt.Errorf("background task request not set in relay info")
+	}
+
+	// 将 TaskSubmitReq 还原为 dto.ImageRequest，再走与同步接口相同的转换逻辑
+	imgReq := taskReqToImageReq(req, info)
+	// 调用与 /v1/images/generations 同步接口完全相同的转换函数，确保请求格式一致
+	upstream := volcengine.ConvertToImageGenRequest(imgReq)
+
+	data, err := common.Marshal(upstream)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal image request failed: %w", err)
+	}
+
+	// ── 打印上游请求入参（排查用） ────────────────────────────────────────────
+	logger.LogInfo(context.Background(), fmt.Sprintf("[BackgroundTask] upstream request: model=%s url=%s/api/v3/images/generations body=%s",
+		upstream.Model, a.baseURL, string(data)))
+
+	apiURL := fmt.Sprintf("%s/api/v3/images/generations", a.baseURL)
+	httpReq, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewReader(data))
+	if err != nil {
+		return "", nil, fmt.Errorf("create http request failed: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+
+	var client *http.Client
+	if proxy := info.ChannelSetting.Proxy; proxy != "" {
+		client, err = service.GetHttpClientWithProxy(proxy)
+		if err != nil {
+			return "", nil, fmt.Errorf("create proxy http client failed: %w", err)
+		}
+	} else {
+		client = service.GetHttpClient()
+	}
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return "", nil, fmt.Errorf("image generation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	responseBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, fmt.Errorf("read response body failed: %w", err)
+	}
+
+	// ── 打印上游原始响应（排查用） ────────────────────────────────────────────
+	logger.LogInfo(context.Background(), fmt.Sprintf("[BackgroundTask] upstream response: status=%d body=%s",
+		resp.StatusCode, string(responseBody)))
+
+	if resp.StatusCode != http.StatusOK {
+		return "", responseBody, fmt.Errorf("image generation API returned status %d: %s", resp.StatusCode, string(responseBody))
+	}
+
+	// 解析为与同步接口相同的 dto.ImageResponse 结构
+	var imgResp dto.ImageResponse
+	if err = common.Unmarshal(responseBody, &imgResp); err != nil {
+		return "", responseBody, fmt.Errorf("unmarshal image response failed: %w", err)
+	}
+
+	// ── 打印解析结果（排查用） ────────────────────────────────────────────────
+	logger.LogInfo(context.Background(), fmt.Sprintf("[BackgroundTask] parsed images count=%d", len(imgResp.Data)))
+
+	if len(imgResp.Data) == 0 {
+		return "", responseBody, fmt.Errorf("image generation returned empty data")
+	}
+
+	// 取第一张图作为 resultURL（多张图通过 task.Data 存储完整 ImageResponse 返回）
+	first := imgResp.Data[0]
+	if first.Url != "" {
+		resultURL = first.Url
+	} else if first.B64Json != "" {
+		resultURL = "data:image/png;base64," + first.B64Json
+	}
+
+	return resultURL, responseBody, nil
+}
+
+// taskReqToImageReq 将 TaskSubmitReq 还原为 dto.ImageRequest，
+// 这是 ValidateImageTaskRequest 的逆操作，确保后台异步路径与同步路径使用相同的请求结构。
+func taskReqToImageReq(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) dto.ImageRequest {
+	modelName := info.UpstreamModelName
+	if modelName == "" {
+		modelName = req.Model
+	}
+
+	imgReq := dto.ImageRequest{
+		Model:          modelName,
+		Prompt:         req.Prompt,
+		Size:           req.Size,
+		ResponseFormat: req.ResponseFormat,
+	}
+
+	// N → *uint
+	if req.N > 0 {
+		n := uint(req.N)
+		imgReq.N = &n
+	}
+
+	// output_format: string → json.RawMessage
+	if req.OutputFormat != "" {
+		if b, merr := json.Marshal(req.OutputFormat); merr == nil {
+			imgReq.OutputFormat = b
+		}
+	}
+
+	// image（图生图）：与同步接口对齐 —— 单张传 string，多张传 []string
+	// volcengineImageRequest.Image 是 json.RawMessage，两种格式均可接收
+	if len(req.Images) == 1 {
+		if b, merr := json.Marshal(req.Images[0]); merr == nil {
+			imgReq.Image = b
+		}
+	} else if len(req.Images) > 1 {
+		if b, merr := json.Marshal(req.Images); merr == nil {
+			imgReq.Image = b
+		}
+	}
+
+	// Metadata 中的渠道专属参数（guidance_scale、watermark 等）→ ExtraFields
+	if len(req.Metadata) > 0 {
+		if b, merr := common.Marshal(req.Metadata); merr == nil {
+			imgReq.ExtraFields = b
+		}
+	}
+
+	return imgReq
 }

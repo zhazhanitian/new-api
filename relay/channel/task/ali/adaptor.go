@@ -257,11 +257,16 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	if info.IsModelMapped {
 		upstreamModel = info.UpstreamModelName
 	}
+	// 首帧图：优先取 InputReference（历史兼容），其次取 Images[0]
+	imgURL := req.InputReference
+	if imgURL == "" && len(req.Images) > 0 {
+		imgURL = req.Images[0]
+	}
 	aliReq := &AliVideoRequest{
 		Model: upstreamModel,
 		Input: AliVideoInput{
 			Prompt: req.Prompt,
-			ImgURL: req.InputReference,
+			ImgURL: imgURL,
 		},
 		Parameters: &AliVideoParameters{
 			PromptExtend: true, // 默认开启智能改写

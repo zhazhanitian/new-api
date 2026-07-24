@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -170,4 +172,43 @@ func DeleteHistoryLogs(c *gin.Context) {
 		"data":    count,
 	})
 	return
+}
+
+// GetRequestBilling 通过 request_id 查询单次请求的账单信息
+// 供内部系统在同步生图接口返回后，通过 X-Oneapi-Request-Id 响应头查询实际扣费
+func GetRequestBilling(c *gin.Context) {
+	userId := c.GetInt("id")
+	requestId := c.Param("request_id")
+	if requestId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "invalid_request", "message": "request_id is required"})
+		return
+	}
+
+	log, exist, err := model.GetLogByRequestId(userId, requestId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": "internal_error", "message": err.Error()})
+		return
+	}
+	if !exist {
+		c.JSON(http.StatusNotFound, gin.H{"code": "not_found", "message": "billing record not found"})
+		return
+	}
+
+	usd := float64(log.Quota) / common.QuotaPerUnit
+	cny := usd * operation_setting.USDExchangeRate
+	amount := fmt.Sprintf("%.6f", cny)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": "success",
+		"data": gin.H{
+			"request_id":        log.RequestId,
+			"model":             log.ModelName,
+			"amount":            amount,
+			"prompt_tokens":     log.PromptTokens,
+			"completion_tokens": log.CompletionTokens,
+			"total_tokens":      log.PromptTokens + log.CompletionTokens,
+			"use_time":          log.UseTime,
+			"created_at":        log.CreatedAt,
+		},
+	})
 }

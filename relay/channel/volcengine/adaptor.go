@@ -12,12 +12,15 @@ import (
 
 	channelconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/tidwall/sjson"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -105,9 +108,9 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	return bytes.NewReader(jsonData), nil
 }
 
-// volcengineImageRequest 是发往火山引擎图像生成 API 的请求结构。
+// ImageGenRequest 是发往火山引擎图像生成 API 的请求结构（导出供 task adaptor 复用）。
 // 标准 OpenAI 的 n 字段会被映射为 sequential_image_generation / sequential_image_generation_options。
-type volcengineImageRequest struct {
+type ImageGenRequest struct {
 	Model          string          `json:"model"`
 	Prompt         string          `json:"prompt"`
 	// 图生图 / 多图融合输入，对应 OpenAI 的 image 字段（string 或 string 数组）
@@ -120,16 +123,19 @@ type volcengineImageRequest struct {
 	// 渠道专属参数，通过 extra_fields 传入
 	GuidanceScale  *float64        `json:"guidance_scale,omitempty"`
 	// 组图生成参数：n == 1 时不填（单图），n > 1 时由 adaptor 自动填充
-	SequentialImageGeneration        string                                   `json:"sequential_image_generation,omitempty"`
-	SequentialImageGenerationOptions *volcengineSequentialImageGenerationOpts `json:"sequential_image_generation_options,omitempty"`
+	SequentialImageGeneration        string                          `json:"sequential_image_generation,omitempty"`
+	SequentialImageGenerationOptions *ImageGenSequentialOpts         `json:"sequential_image_generation_options,omitempty"`
 }
 
-type volcengineSequentialImageGenerationOpts struct {
+// ImageGenSequentialOpts 组图生成选项（导出供复用）。
+type ImageGenSequentialOpts struct {
 	MaxImages uint `json:"max_images"`
 }
 
-func convertToVolcengineImageRequest(request dto.ImageRequest) volcengineImageRequest {
-	r := volcengineImageRequest{
+// ConvertToImageGenRequest 将标准 dto.ImageRequest 转换为火山引擎图像生成请求格式。
+// 同步接口（/v1/images/generations）和后台异步任务均调用此函数，保持请求结构一致。
+func ConvertToImageGenRequest(request dto.ImageRequest) ImageGenRequest {
+	r := ImageGenRequest{
 		Model:          request.Model,
 		Prompt:         request.Prompt,
 		Image:          request.Image,
@@ -147,7 +153,7 @@ func convertToVolcengineImageRequest(request dto.ImageRequest) volcengineImageRe
 	// n > 1 时映射为组图生成参数；n == 1 或未传时保持单图模式，不传 sequential 参数
 	if request.N != nil && *request.N > 1 {
 		r.SequentialImageGeneration = "auto"
-		r.SequentialImageGenerationOptions = &volcengineSequentialImageGenerationOpts{
+		r.SequentialImageGenerationOptions = &ImageGenSequentialOpts{
 			MaxImages: *request.N,
 		}
 	}
@@ -158,7 +164,7 @@ func convertToVolcengineImageRequest(request dto.ImageRequest) volcengineImageRe
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
 	case constant.RelayModeImagesGenerations:
-		return convertToVolcengineImageRequest(request), nil
+		return ConvertToImageGenRequest(request), nil
 	// 根据官方文档,并没有发现豆包生图支持表单请求:https://www.volcengine.com/docs/82379/1824121
 	//case constant.RelayModeImagesEdits:
 	//
@@ -436,6 +442,46 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			return handleTTSWebSocketResponse(c, requestURL, volcRequest, info, encoding)
 		}
 		return handleTTSResponse(c, resp, info, encoding)
+	}
+
+	// 图片生成接口：多退少补——实际生成数与请求 n 不符时按实际数量计费（包括多图补扣）。
+	// 需要用实际生成数修正计费，支持两种计费路径：
+	//   1. UsePrice（price-based）→ 修正 OtherRatios["n"]，image_handler.go 会读取
+	//   2. tiered_expr → 修正 BillingRequestInput.Body 里的 n 字段，param("n") 从中读取
+	if info.RelayMode == constant.RelayModeImagesGenerations && resp != nil {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr == nil && len(bodyBytes) > 0 {
+			var imgResp dto.ImageResponse
+			if json.Unmarshal(bodyBytes, &imgResp) == nil && len(imgResp.Data) > 0 {
+			actualN := len(imgResp.Data)
+			logger.LogInfo(c, fmt.Sprintf("[volcengine] sync image billing: actualN=%d, UsePrice=%v, OtherRatios=%v", actualN, info.PriceData.UsePrice, info.PriceData.OtherRatios))
+
+			// 路径 1：price-based 计费（UsePrice=true）→ 修正 OtherRatios["n"]
+			// 仅限 UsePrice 模型，ratio 模型不用 OtherRatios["n"] 计费，注入会错误地乘以 n 倍
+			if info.PriceData.UsePrice {
+				info.PriceData.AddOtherRatio("n", float64(actualN))
+			}
+
+			// 路径 2：tiered_expr 计费 → 修正 BillingRequestInput.Body 里的 n
+			// param("n") 在 settle 阶段直接从请求 body JSON 读取，必须在这里覆盖
+			// 仅在 TieredBillingSnapshot 存在时才有效（其他模式 TryTieredSettle 会直接跳过）
+			if info.TieredBillingSnapshot != nil &&
+				info.BillingRequestInput != nil && len(info.BillingRequestInput.Body) > 0 {
+				if newBody, sjsonErr := sjson.SetBytes(info.BillingRequestInput.Body, "n", actualN); sjsonErr == nil {
+					updated := billingexpr.RequestInput{
+						Headers: info.BillingRequestInput.Headers,
+						Body:    newBody,
+					}
+					info.BillingRequestInput = &updated
+				}
+			}
+
+			logger.LogInfo(c, fmt.Sprintf("[volcengine] sync image billing after fix: OtherRatios=%v, n_in_body=%d", info.PriceData.OtherRatios, actualN))
+			}
+			// 恢复 body 供 OpenAI adaptor 继续读取
+			resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		}
 	}
 
 	adaptor := openai.Adaptor{}

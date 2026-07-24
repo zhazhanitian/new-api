@@ -1,6 +1,7 @@
 package doubao
 
 var ModelList = []string{
+	// ── Video generation (async, seedance) ──────────────────────────────
 	"doubao-seedance-1-0-pro-250528",
 	"doubao-seedance-1-0-lite-t2v",
 	"doubao-seedance-1-0-lite-i2v",
@@ -11,6 +12,13 @@ var ModelList = []string{
 	// BytePlus (international) equivalents
 	"dreamina-seedance-2-0-260128",
 	"dreamina-seedance-2-0-fast-260128",
+
+	// ── Image generation (background goroutine, seedream) ────────────────
+	// These models call a synchronous Volcengine image API wrapped as async.
+	"doubao-seedream-3-0-t2i-250415",
+	"doubao-seedream-4-5-t2i-250505",
+	"doubao-seedream-4-5-251128",
+	"doubao-seedream-5-0-t2i-250804",
 }
 
 var ChannelName = "doubao-video"

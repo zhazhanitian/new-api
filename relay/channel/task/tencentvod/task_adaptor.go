@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -217,7 +218,12 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
+
+	// v2 图片任务接口（RelayModeImageTaskSubmit）不在此处写响应，
+	// 由控制器统一写 ImageTaskDto 格式，保持新旧接口响应结构一致。
+	if c.GetInt("relay_mode") != relayconstant.RelayModeImageTaskSubmit {
+		c.JSON(http.StatusOK, ov)
+	}
 
 	return createResp.Response.TaskId, bodyBytes, nil
 }
@@ -323,6 +329,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 				descResp.Response.AigcImageTask.Output != nil &&
 				len(descResp.Response.AigcImageTask.Output.FileInfos) > 0 {
 				result.Url = descResp.Response.AigcImageTask.Output.FileInfos[0].FileUrl
+				result.ActualImages = len(descResp.Response.AigcImageTask.Output.FileInfos)
 			}
 		}
 	case "FAIL":

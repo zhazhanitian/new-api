@@ -515,6 +515,21 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return token
 }
 
+// GetLogByRequestId 按 request_id + user_id 查询单条消费日志（用于账单后置查询）
+// request_id 字段已有索引 idx_logs_request_id，查询性能无需额外优化
+func GetLogByRequestId(userId int, requestId string) (*Log, bool, error) {
+	var log Log
+	err := LOG_DB.Where("user_id = ? AND request_id = ?", userId, requestId).
+		First(&log).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return &log, true, nil
+}
+
 func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64, error) {
 	var total int64 = 0
 

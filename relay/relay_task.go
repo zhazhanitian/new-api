@@ -2,16 +2,20 @@ package relay
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -19,6 +23,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,7 +32,13 @@ type TaskSubmitResult struct {
 	TaskData       []byte
 	Platform       constant.TaskPlatform
 	Quota          int
-	//PerCallPrice   types.PriceData
+
+	// BackgroundAdaptor is non-nil when the upstream image API is synchronous
+	// and the controller should insert a "queued" task, respond immediately,
+	// then spawn a goroutine via RunBackgroundTask.
+	// RelayTaskSubmit returns early (after billing pre-consume) without calling
+	// BuildRequestBody / DoRequest / DoResponse.
+	BackgroundAdaptor channel.BackgroundTaskAdaptor
 }
 
 // ResolveOriginTask 处理基于已有任务的提交（remix / continuation）：
@@ -154,6 +165,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
 	}
 	adaptor.Init(info)
+	// 前置处理：v2 图片任务使用 ImageRequest 格式，在 adaptor 之前统一转换为 TaskSubmitReq
+	if c.GetInt("relay_mode") == relayconstant.RelayModeImageTaskSubmit {
+		if taskErr := relaycommon.ValidateImageTaskRequest(c, info); taskErr != nil {
+			return nil, taskErr
+		}
+	}
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
 		return nil, taskErr
 	}
@@ -208,6 +225,21 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)
 		}
+	}
+
+	// 7.5 Background-mode detection: sync-API-as-async (e.g. Volcengine image gen).
+	// Return early; the controller will insert a "queued" task, send the HTTP
+	// response immediately, and then spawn RunBackgroundTask in a goroutine.
+	if bgAdaptor, ok := adaptor.(channel.BackgroundTaskAdaptor); ok && bgAdaptor.IsBackgroundSubmit(info.UpstreamModelName) {
+		// Snapshot the request now — gin.Context won't be available in the goroutine.
+		if req, reqErr := relaycommon.GetTaskRequest(c); reqErr == nil {
+			info.BackgroundTaskReq = &req
+		}
+		return &TaskSubmitResult{
+			Platform:          platform,
+			Quota:             info.PriceData.Quota,
+			BackgroundAdaptor: bgAdaptor,
+		}, nil
 	}
 
 	// 8. 构建请求体
@@ -278,10 +310,99 @@ func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float6
 	return int(result)
 }
 
+// RunBackgroundTask executes a synchronous upstream image API call inside a
+// background goroutine. It updates the task status in the DB and handles
+// billing refund on failure. It MUST NOT use the gin.Context for HTTP writes.
+func RunBackgroundTask(task *model.Task, adaptor channel.BackgroundTaskAdaptor, info *relaycommon.RelayInfo) {
+	ctx := context.Background()
+
+	resultURL, rawBody, err := adaptor.ExecuteBackgroundTask(info)
+
+	task.FinishTime = time.Now().Unix()
+
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("RunBackgroundTask failed (task=%s): %v", task.TaskID, err))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = err.Error()
+		task.Progress = "0%"
+		if updateErr := task.Update(); updateErr != nil {
+			logger.LogError(ctx, fmt.Sprintf("RunBackgroundTask: update task failed (task=%s): %v", task.TaskID, updateErr))
+		}
+		service.RefundTaskQuota(ctx, task, "background image task failed: "+err.Error())
+		return
+	}
+
+	task.Status = model.TaskStatusSuccess
+	task.Progress = taskcommon.ProgressComplete
+	if resultURL != "" {
+		task.PrivateData.ResultURL = resultURL
+	}
+	if len(rawBody) > 0 {
+		task.Data = rawBody
+	}
+	if updateErr := task.Update(); updateErr != nil {
+		logger.LogError(ctx, fmt.Sprintf("RunBackgroundTask: update task failed (task=%s): %v", task.TaskID, updateErr))
+	}
+
+	// ── 差额结算（与轮询路径 settleTaskBillingOnComplete 对齐）──────────────────
+	//
+	// 规则：
+	//   1. token 计费模型（hasRatioSetting）→ 按实际 TotalTokens 重算
+	//   2. 固定价/按次计费模型（PerCallBilling）→ 按实际生成图片数占预估图片数的比例退款
+	//      背景：sequential_image_generation=auto 模式，上游可能生成少于 n 张图，
+	//             预扣是按 n 张估算的，需要按实际生成数补差。
+	//   3. 无调整 → 保持预扣额度不变
+	//
+	// 重算后必须再次 task.Update()，确保 task.Quota 写回 DB，
+	// 否则查询接口返回的 amount 仍是预估值。
+	if len(rawBody) > 0 {
+		var imgResp dto.ImageResponse
+		if jsonErr := json.Unmarshal(rawBody, &imgResp); jsonErr == nil {
+			settled := false
+
+			// 优先：token 计费模型，按实际 TotalTokens 重算（内部自动跳过非 ratio 模型）
+			if imgResp.Usage != nil && imgResp.Usage.TotalTokens > 0 {
+				beforeQuota := task.Quota
+				service.RecalculateTaskQuotaByTokens(ctx, task, imgResp.Usage.TotalTokens)
+				if task.Quota != beforeQuota {
+					settled = true
+				}
+			}
+
+			// 按实际生成图片数多退少补（兜底，覆盖所有计费模式）
+			// 条件：token 重算未生效，且实际图片数与请求数不符
+			// 适用范围：fixed-price、tiered_expr（param("n") 线性乘法）等所有计费模型。
+			// 原理：预扣 quota 与 n 成正比，实际 quota = preQuota × actualN / nRequested。
+			if !settled {
+				nRequested := 0
+				if info.BackgroundTaskReq != nil {
+					nRequested = info.BackgroundTaskReq.N
+				}
+				actualImages := len(imgResp.Data)
+				if nRequested > 0 && actualImages > 0 && actualImages != nRequested {
+					// 多退少补：实际费用 = 预扣总额 × 实际张数 / 请求张数
+					actualQuota := task.Quota * actualImages / nRequested
+					reason := fmt.Sprintf("image count adjust: requested=%d actual=%d", nRequested, actualImages)
+					service.RecalculateTaskQuota(ctx, task, actualQuota, reason)
+					settled = true
+				}
+			}
+
+			// 差额结算更新了 task.Quota（内存），写回 DB 保证 amount 准确
+			if settled {
+				if updateErr := task.Update(); updateErr != nil {
+					logger.LogError(ctx, fmt.Sprintf("RunBackgroundTask: update task quota after settle failed (task=%s): %v", task.TaskID, updateErr))
+				}
+			}
+		}
+	}
+}
+
 var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){
-	relayconstant.RelayModeSunoFetchByID:  sunoFetchByIDRespBodyBuilder,
-	relayconstant.RelayModeSunoFetch:      sunoFetchRespBodyBuilder,
-	relayconstant.RelayModeVideoFetchByID: videoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeSunoFetchByID:      sunoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeSunoFetch:          sunoFetchRespBodyBuilder,
+	relayconstant.RelayModeVideoFetchByID:     videoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeImageTaskFetchByID: imageTaskFetchByIDRespBodyBuilder,
 }
 
 func RelayTaskFetch(c *gin.Context, relayMode int) (taskResp *dto.TaskError) {
@@ -464,9 +585,8 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if ti.Progress != "" {
 		task.Progress = ti.Progress
 	}
-	if strings.HasPrefix(ti.Url, "data:") {
-		// data: URI — kept in Data, not ResultURL
-	} else if ti.Url != "" {
+	if ti.Url != "" {
+		// data: URI（base64）与普通 URL 均写入 ResultURL，供查询接口读取
 		task.PrivateData.ResultURL = ti.Url
 	} else if task.Status == model.TaskStatusSuccess {
 		// No URL from adaptor — construct proxy URL using public task ID
@@ -539,6 +659,10 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 }
 
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+	usd := float64(task.Quota) / common.QuotaPerUnit
+	cny := usd * operation_setting.USDExchangeRate
+	amount := fmt.Sprintf("%.6f", cny)
+
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,
@@ -548,7 +672,7 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		UserId:     task.UserId,
 		Group:      task.Group,
 		ChannelId:  task.ChannelId,
-		Quota:      task.Quota,
+		Amount:     amount,
 		Action:     task.Action,
 		Status:     string(task.Status),
 		FailReason: task.FailReason,
@@ -560,5 +684,128 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Properties: task.Properties,
 		Username:   task.Username,
 		Data:       task.Data,
+	}
+}
+
+// imageTaskFetchByIDRespBodyBuilder 是 /v2/image-tasks/:task_id 的查询构建器
+func imageTaskFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
+	taskId := c.Param("task_id")
+	userId := c.GetInt("id")
+
+	task, exist, err := model.GetByTaskId(userId, taskId)
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+		return
+	}
+	if !exist {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusNotFound)
+		return
+	}
+
+	respBody, err = common.Marshal(dto.TaskResponse[any]{
+		Code: "success",
+		Data: TaskModel2ImageTaskDto(task),
+	})
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+	}
+	return
+}
+
+// TaskModel2ImageTaskDto 将 model.Task 转换为面向外部的 ImageTaskDto
+// 去掉内部敏感字段，金额换算为人民币，usage 从 task.Data 原始响应体中提取并标准化
+func TaskModel2ImageTaskDto(task *model.Task) *dto.ImageTaskDto {
+	// quota → CNY amount
+	usd := float64(task.Quota) / common.QuotaPerUnit
+	cny := usd * operation_setting.USDExchangeRate
+	amount := fmt.Sprintf("%.6f", cny)
+
+	result := &dto.ImageTaskDto{
+		TaskID:     task.TaskID,
+		Status:     string(task.Status),
+		Progress:   task.Progress,
+		FailReason: task.FailReason,
+		Model:      task.Properties.OriginModelName,
+		Amount:     amount,
+		Usage:      extractImageTaskUsage(task.Data),
+		CreatedAt:  task.CreatedAt,
+		SubmitTime: task.SubmitTime,
+		FinishTime: task.FinishTime,
+		Images:     []dto.ImageItem{},
+	}
+
+	// images：优先从 task.Data 中解析多张图片（后台异步任务存储完整 ImageResponse）；
+	// 退化为单张 PrivateData.ResultURL。
+	// 注意：不能用 task.GetResultURL()，该方法在 ResultURL 为空时会 fallback 到
+	// FailReason，会把错误信息错误地写入 images[].url。
+	if items := extractImagesFromTaskData(task.Data); len(items) > 0 {
+		result.Images = items
+	} else if resultURL := task.PrivateData.ResultURL; resultURL != "" {
+		if strings.HasPrefix(resultURL, "data:") {
+			// 剥离 "data:image/xxx;base64," 前缀，只保留纯 base64 数据
+			if idx := strings.Index(resultURL, ";base64,"); idx != -1 {
+				result.Images = append(result.Images, dto.ImageItem{B64Json: resultURL[idx+8:]})
+			}
+		} else {
+			result.Images = append(result.Images, dto.ImageItem{URL: resultURL})
+		}
+	}
+	return result
+}
+
+// extractImagesFromTaskData 尝试将 task.Data 解析为 dto.ImageResponse 并提取图片列表。
+// 用于后台异步图片任务（存储完整的上游 ImageResponse JSON）。
+// 如果 task.Data 不含有效的 data 数组，返回 nil（调用方退化为 ResultURL 模式）。
+func extractImagesFromTaskData(taskData json.RawMessage) []dto.ImageItem {
+	if len(taskData) == 0 {
+		return nil
+	}
+	var imgResp dto.ImageResponse
+	if err := json.Unmarshal(taskData, &imgResp); err != nil || len(imgResp.Data) == 0 {
+		return nil
+	}
+	items := make([]dto.ImageItem, 0, len(imgResp.Data))
+	for _, d := range imgResp.Data {
+		if d.Url != "" {
+			items = append(items, dto.ImageItem{URL: d.Url})
+		} else if d.B64Json != "" {
+			items = append(items, dto.ImageItem{B64Json: d.B64Json})
+		}
+	}
+	return items
+}
+
+// extractImageTaskUsage 从上游原始响应体中提取并标准化 token 用量
+//
+// 渠道差异处理：
+//   - 火山(Doubao)：task.Data["usage"]["completion_tokens"] → output_tokens
+//   - 京东：task.Data["usage_metadata"]["input_tokens"/"output_tokens"]
+//   - 腾讯 VOD：无 usage 字段 → 全返回 0（按次计费）
+func extractImageTaskUsage(taskData json.RawMessage) dto.ImageTaskUsage {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(taskData, &raw); err != nil {
+		return dto.ImageTaskUsage{}
+	}
+
+	// 优先取 "usage"，其次取 "usage_metadata"（京东）
+	usageRaw, ok := raw["usage"]
+	if !ok {
+		usageRaw, ok = raw["usage_metadata"]
+	}
+	if !ok {
+		return dto.ImageTaskUsage{}
+	}
+
+	var fields map[string]int
+	_ = json.Unmarshal(usageRaw, &fields)
+
+	outputTokens := fields["output_tokens"]
+	if outputTokens == 0 {
+		outputTokens = fields["completion_tokens"] // 火山兼容
+	}
+	return dto.ImageTaskUsage{
+		InputTokens:  fields["input_tokens"],
+		OutputTokens: outputTokens,
+		TotalTokens:  fields["total_tokens"],
 	}
 }

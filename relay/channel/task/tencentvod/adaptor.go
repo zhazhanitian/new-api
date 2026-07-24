@@ -11,11 +11,13 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 // Adaptor implements channel.Adaptor for synchronous image generation via
@@ -242,6 +244,33 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	}
 	if len(imageResponse.Data) == 0 {
 		return nil, types.NewError(errors.New("tencentvod: no images in response"), types.ErrorCodeBadResponseBody)
+	}
+
+	// 修正计费：多退少补——实际生成数与请求 n 不符时按实际数量计费
+	// 同时覆盖两条计费路径（price-based 和 tiered_expr）
+	actualN := len(imageResponse.Data)
+	requestedN := 1
+	if imageReq, ok := info.Request.(*dto.ImageRequest); ok && imageReq.N != nil {
+		requestedN = int(*imageReq.N)
+	}
+	if actualN != requestedN {
+		// 路径 1：price-based 计费（UsePrice=true）→ 修正 OtherRatios["n"]
+		// 仅限 UsePrice 模型，ratio 模型不用 OtherRatios["n"] 计费，注入会错误地乘以 n 倍
+		if info.PriceData.UsePrice {
+			info.PriceData.AddOtherRatio("n", float64(actualN))
+		}
+		// 路径 2：tiered_expr 计费 → 修正 BillingRequestInput.Body 里的 n
+		// 仅在 TieredBillingSnapshot 存在时才有效（其他模式 TryTieredSettle 会直接跳过）
+		if info.TieredBillingSnapshot != nil &&
+			info.BillingRequestInput != nil && len(info.BillingRequestInput.Body) > 0 {
+			if newBody, sjsonErr := sjson.SetBytes(info.BillingRequestInput.Body, "n", actualN); sjsonErr == nil {
+				updated := billingexpr.RequestInput{
+					Headers: info.BillingRequestInput.Headers,
+					Body:    newBody,
+				}
+				info.BillingRequestInput = &updated
+			}
+		}
 	}
 
 	// 腾讯 VOD 接口不返回 token 用量，按生图惯例用 prompt 字符数做占位估算

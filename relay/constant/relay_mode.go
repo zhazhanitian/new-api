@@ -43,6 +43,9 @@ const (
 	RelayModeVideoFetchByID
 	RelayModeVideoSubmit
 
+	RelayModeImageTaskFetchByID  // v2 图片任务查询
+	RelayModeImageTaskSubmit     // v2 图片任务提交，使用 ImageRequest 格式
+
 	RelayModeRerank
 
 	RelayModeResponses

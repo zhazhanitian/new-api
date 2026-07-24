@@ -72,6 +72,13 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.TokenAuth())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
 	{
+		// 账单查询：TokenAuth 鉴权，不走渠道分发（不消耗渠道资源）
+		billingQueryRouter := relayV1Router.Group("")
+		{
+			billingQueryRouter.GET("/requests/:request_id", controller.GetRequestBilling)
+		}
+	}
+	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")
 		wsRouter.Use(middleware.Distribute())

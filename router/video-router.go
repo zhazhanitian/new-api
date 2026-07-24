@@ -24,7 +24,7 @@ func SetVideoRouter(router *gin.Engine) {
 		videoV1Router.GET("/video/generations/:task_id", controller.RelayTaskFetch)
 		videoV1Router.POST("/videos/:video_id/remix", controller.RelayTask)
 	}
-	// async image generation task routes
+	// async image generation task routes (v1, preserved for backward compatibility)
 	{
 		videoV1Router.POST("/image-tasks/submit", controller.RelayTask)
 		videoV1Router.GET("/image-tasks/:task_id", controller.RelayTaskFetch)
@@ -34,6 +34,15 @@ func SetVideoRouter(router *gin.Engine) {
 	{
 		videoV1Router.POST("/videos", controller.RelayTask)
 		videoV1Router.GET("/videos/:task_id", controller.RelayTaskFetch)
+	}
+
+	// v2 image task routes: POST /v2/image-tasks (submit) + GET /v2/image-tasks/:task_id (clean query)
+	imageTaskV2Router := router.Group("/v2")
+	imageTaskV2Router.Use(middleware.RouteTag("relay"))
+	imageTaskV2Router.Use(middleware.TokenAuth(), middleware.Distribute())
+	{
+		imageTaskV2Router.POST("/image-tasks", controller.RelayTask)
+		imageTaskV2Router.GET("/image-tasks/:task_id", controller.RelayTaskFetch)
 	}
 
 	klingV1Router := router.Group("/kling/v1")

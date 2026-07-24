@@ -81,3 +81,22 @@ type TaskAdaptor interface {
 type OpenAIVideoConverter interface {
 	ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
 }
+
+// BackgroundTaskAdaptor is an optional interface implemented by TaskAdaptors
+// whose upstream image API is synchronous (i.e. the response is immediate but
+// may take tens of seconds). Implementing this interface makes the submit
+// endpoint return a task_id immediately while actual generation runs in a
+// background goroutine.
+//
+// Only adaptors that need this behaviour implement this interface; all others
+// rely on the normal DoRequest→DoResponse flow.
+type BackgroundTaskAdaptor interface {
+	// IsBackgroundSubmit reports whether modelName requires background execution.
+	// Return true only for image-generation models that call a synchronous API.
+	IsBackgroundSubmit(modelName string) bool
+
+	// ExecuteBackgroundTask calls the upstream synchronous API and returns the
+	// raw response body and the primary result URL (first image URL or data URI).
+	// It is called from a background goroutine and MUST NOT write to gin.Context.
+	ExecuteBackgroundTask(info *relaycommon.RelayInfo) (resultURL string, responseBody []byte, err error)
+}

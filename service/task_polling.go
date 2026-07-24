@@ -492,7 +492,15 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	if shouldSettle {
+		quotaBefore := task.Quota
 		settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+		// settlement 可能修改了 task.Quota（差额结算），需要回写 DB
+		// 否则 amount 字段在查询接口里仍显示预扣值
+		if task.Quota != quotaBefore {
+			if updateErr := task.Update(); updateErr != nil {
+				logger.LogError(ctx, fmt.Sprintf("task quota update after settle failed (task=%s): %v", task.TaskID, updateErr))
+			}
+		}
 	}
 	if shouldRefund {
 		RefundTaskQuota(ctx, task, task.FailReason)
@@ -556,5 +564,16 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		RecalculateTaskQuotaByTokens(ctx, task, taskResult.TotalTokens)
 		return
 	}
-	// 3. 无调整，保持预扣额度
+	// 3. 兜底：按实际生成图片数多退少补（适用于所有计费模式，包括 tiered_expr）
+	// 条件：adaptor 填写了 ActualImages，且 BillingContext 记录了 RequestedN，且实际数与请求数不符
+	if bc := task.PrivateData.BillingContext; bc != nil &&
+		bc.RequestedN > 0 &&
+		taskResult.ActualImages > 0 &&
+		taskResult.ActualImages != bc.RequestedN {
+		actualQuota := task.Quota * taskResult.ActualImages / bc.RequestedN
+		reason := fmt.Sprintf("image count adjust: requested=%d actual=%d", bc.RequestedN, taskResult.ActualImages)
+		RecalculateTaskQuota(ctx, task, actualQuota, reason)
+		return
+	}
+	// 4. 无调整，保持预扣额度
 }

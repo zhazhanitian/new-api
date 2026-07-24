@@ -671,12 +671,20 @@ type TaskRelayInfo struct {
 	// a specific channel (e.g., remix on origin task's channel). Stored as any
 	// to avoid an import cycle with model; callers type-assert to *model.Channel.
 	LockedChannel any
+
+	// BackgroundTaskReq is a snapshot of the parsed TaskSubmitReq for use in
+	// background goroutines where gin.Context is no longer available.
+	// Set by RelayTaskSubmit before returning when BackgroundAdaptor is non-nil.
+	BackgroundTaskReq *TaskSubmitReq
 }
 
 type TaskSubmitReq struct {
 	Prompt            string                 `json:"prompt"`
 	Model             string                 `json:"model,omitempty"`
 	Mode              string                 `json:"mode,omitempty"`
+	// Image 仅用于图片任务（/v1/images/generations、/v2/image-tasks），
+	// 视频任务请统一使用 Images 字段。
+	// 兼容层：如果传入且 Images 为空，会自动合并为 Images[0]。
 	Image             string                 `json:"image,omitempty"`
 	Images            []string               `json:"images,omitempty"`
 	Size              string                 `json:"size,omitempty"`
@@ -687,7 +695,10 @@ type TaskSubmitReq struct {
 	OutputCompression int                    `json:"output_compression,omitempty"`
 	Duration          int                    `json:"duration,omitempty"`
 	Seconds           string                 `json:"seconds,omitempty"`
+	// InputReference 已废弃，视频任务请统一使用 Images[0]。
+	// 兼容层：如果传入会自动转为 Images[0]。
 	InputReference    string                 `json:"input_reference,omitempty"`
+	ResponseFormat    string                 `json:"response_format,omitempty"`
 	Metadata          map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -770,6 +781,7 @@ type TaskInfo struct {
 	Progress         string `json:"progress,omitempty"`
 	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	ActualImages     int    `json:"actual_images,omitempty"`     // 实际生成图片数（用于生图少图比例退款）
 }
 
 func FailTaskInfo(reason string) *TaskInfo {
