@@ -772,16 +772,26 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 }
 
 type TaskInfo struct {
-	Code             int    `json:"code"`
-	TaskID           string `json:"task_id"`
-	Status           string `json:"status"`
-	Reason           string `json:"reason,omitempty"`
-	Url              string `json:"url,omitempty"`
-	RemoteUrl        string `json:"remote_url,omitempty"`
-	Progress         string `json:"progress,omitempty"`
-	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
-	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
-	ActualImages     int    `json:"actual_images,omitempty"`     // 实际生成图片数（用于生图少图比例退款）
+	Code             int      `json:"code"`
+	TaskID           string   `json:"task_id"`
+	Status           string   `json:"status"`
+	Reason           string   `json:"reason,omitempty"`
+	Url              string   `json:"url,omitempty"`
+	// Urls 多图任务中所有图片 URL（如 Kling/OG n>1）。
+	// 若非空，task_polling.go 轮询路径会将其序列化为 dto.ImageResponse 写入 task.Data，
+	// TaskModel2ImageTaskDto 优先从 task.Data 中读取全部图片。
+	// Url 同时保持与 Urls[0] 一致，保证单图逻辑不受影响。
+	Urls             []string `json:"urls,omitempty"`
+	RemoteUrl        string   `json:"remote_url,omitempty"`
+	Progress         string   `json:"progress,omitempty"`
+	CompletionTokens int      `json:"completion_tokens,omitempty"` // 用于按倍率计费
+	TotalTokens      int      `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	ActualImages     int      `json:"actual_images,omitempty"`     // 实际生成图片数（用于生图少图比例退款）
+	// ExpectedImages 实际发往上游 API 的多图请求数（如 TencentVOD OutputImageCount）。
+	// 预扣时表达式按此 n 计费（expression 含 * n），结算时以此为除数做多退少补。
+	// 与 ActualImages 配合使用，两者均从上游响应中读取，保证预扣和结算依据相同。
+	// 若为 0 或 1 则不触发多图结算（模型不支持多图或未请求多图）。
+	ExpectedImages   int      `json:"expected_images,omitempty"`
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

@@ -37,6 +37,60 @@ import {
 const { Text } = Typography;
 
 const VAR_LABELS = { p: '输入', c: '输出' };
+
+// 已知 param 附加费用项的中文标签（可按需扩展）
+const PARAM_ADDON_LABELS = {
+  image: '输入图片',
+};
+
+/**
+ * 按顶层加法（深度0处的 +）拆分表达式，忽略括号内的加号。
+ * 兼容 ' + '、' +\n'、'\n+ ' 等各种空白格式。
+ */
+function splitTopLevelPlus(expr) {
+  const parts = [];
+  let start = 0;
+  let depth = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (depth === 0 && c === '+') {
+      // 要求 + 前面是空白字符（避免误匹配科学计数法 1e+6）
+      const prev = i > 0 ? expr[i - 1] : '';
+      if (/\s/.test(prev)) {
+        parts.push(expr.slice(start, i).trim());
+        start = i + 1;
+      }
+    }
+  }
+  parts.push(expr.slice(start).trim());
+  return parts.filter(Boolean);
+}
+
+/**
+ * 从计费表达式中解析出 param(...) 条件附加费用项，例如：
+ *   (param("image") != nil ? (param("image.#") > 0 ? param("image.#") : 1) * 13699 : 0)
+ * 返回数组，每项形如 { paramName, label, unitCost }。
+ */
+function parseParamAddonCosts(exprStr) {
+  if (!exprStr) return [];
+  const addons = [];
+  const segments = splitTopLevelPlus(exprStr);
+  for (const seg of segments) {
+    // 排除包含 tier( 的主档位项
+    if (/tier\s*\(/.test(seg)) continue;
+    // 匹配: param("X") != nil ? ... * COST : 0
+    const m = seg.match(/param\("([^"]+)"\)\s*!=\s*nil[\s\S]*?\*\s*(\d+)[\s\S]*?:\s*0/);
+    if (m) {
+      const paramName = m[1];
+      const unitCost = parseInt(m[2], 10);
+      const label = PARAM_ADDON_LABELS[paramName] || `param(${paramName})`;
+      addons.push({ paramName, label, unitCost });
+    }
+  }
+  return addons;
+}
 const OP_LABELS = { '<': '<', '<=': '≤', '>': '>', '>=': '≥' };
 const TIME_FUNC_LABELS = { hour: '小时', minute: '分钟', weekday: '星期', month: '月份', day: '日期' };
 
@@ -93,11 +147,13 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
 
   const tiers = parseTiersFromExpr(baseExpr);
   const ruleGroups = tryParseRequestRuleExpr(ruleExpr || '');
+  const addonCosts = parseParamAddonCosts(baseExpr);
 
   const hasTiers = tiers && tiers.length > 0;
   const hasRules = ruleGroups && ruleGroups.length > 0;
+  const hasAddons = addonCosts && addonCosts.length > 0;
 
-  if (!hasTiers && !hasRules) {
+  if (!hasTiers && !hasRules && !hasAddons) {
     return (
       <div>
         <div className='flex items-center mb-3'>
@@ -113,7 +169,9 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
     );
   }
 
-  const QUOTA_PER_USD = 500000;
+  const QUOTA_PER_USD = 500_000;
+  // 和后端 QuotaRound 保持一致：先把表达式原始值换算成整数 quota，再转回货币
+  const quotaToPrice = (rawCost) => (Math.round((rawCost / 1_000_000) * QUOTA_PER_USD) / QUOTA_PER_USD) * rate;
   const priceFields = BILLING_PRICING_VARS.map((v) => [v.field, v.shortLabel]);
   const hasFixedCost = hasTiers && tiers.some((tier) => tier.fixedCost > 0);
 
@@ -141,7 +199,7 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
       title: t('单次费用'),
       dataIndex: 'fixedCost',
       render: (v) => v > 0
-        ? <Text strong>{`${symbol}${((v / 1_000_000) * rate).toFixed(4)}`}</Text>
+        ? <Text strong>{`${symbol}${quotaToPrice(v).toFixed(6)}`}</Text>
         : '-',
     }] : []),
   ];
@@ -183,6 +241,33 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
             bordered={false}
             className='!rounded-lg'
           />
+        </div>
+      )}
+
+      {hasAddons && (
+        <div style={{ marginBottom: 16 }}>
+          <Text strong className='text-sm' style={{ display: 'block', marginBottom: 8 }}>
+            {t('附加费用')}
+          </Text>
+          {addonCosts.map((addon) => (
+            <div
+              key={addon.paramName}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '8px 12px',
+                borderRadius: 6,
+                background: 'var(--semi-color-fill-0)',
+                marginBottom: 4,
+              }}
+            >
+              <Text size='small'>{t(addon.label)}</Text>
+              <Text strong size='small'>
+                {`${symbol}${quotaToPrice(addon.unitCost).toFixed(6)}/` + t('张')}
+              </Text>
+            </div>
+          ))}
         </div>
       )}
 

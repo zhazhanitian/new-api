@@ -585,8 +585,19 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if ti.Progress != "" {
 		task.Progress = ti.Progress
 	}
-	if ti.Url != "" {
-		// data: URI（base64）与普通 URL 均写入 ResultURL，供查询接口读取
+	if len(ti.Urls) > 0 {
+		// 多图任务（如 Kling/OG n>1）：将所有 URL 序列化为 dto.ImageResponse 写入 task.Data，
+		// TaskModel2ImageTaskDto 会优先从 task.Data 读取，确保全部图片都返回给调用方。
+		var imgData []dto.ImageData
+		for _, u := range ti.Urls {
+			imgData = append(imgData, dto.ImageData{Url: u})
+		}
+		if imgBytes, err := json.Marshal(dto.ImageResponse{Data: imgData}); err == nil {
+			task.Data = imgBytes
+		}
+		task.PrivateData.ResultURL = ti.Urls[0]
+	} else if ti.Url != "" {
+		// 单图任务：data: URI（base64）与普通 URL 均写入 ResultURL，供查询接口读取
 		task.PrivateData.ResultURL = ti.Url
 	} else if task.Status == model.TaskStatusSuccess {
 		// No URL from adaptor — construct proxy URL using public task ID

@@ -439,7 +439,20 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		if task.FinishTime == 0 {
 			task.FinishTime = now
 		}
-		if strings.HasPrefix(taskResult.Url, "data:") {
+		if len(taskResult.Urls) > 0 {
+			// 多图任务（如 TencentVOD Kling/OG n>1）：将所有 URL 构建为 dto.ImageResponse 写入
+			// task.Data，覆盖上方 redactVideoResponseBody 的结果。
+			// TaskModel2ImageTaskDto 优先从 task.Data 的 ImageResponse 格式读取，
+			// 确保全部图片都返回给调用方。
+			var imgData []dto.ImageData
+			for _, u := range taskResult.Urls {
+				imgData = append(imgData, dto.ImageData{Url: u})
+			}
+			if imgBytes, err := common.Marshal(dto.ImageResponse{Data: imgData}); err == nil {
+				task.Data = imgBytes
+			}
+			task.PrivateData.ResultURL = taskResult.Urls[0]
+		} else if strings.HasPrefix(taskResult.Url, "data:") {
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		} else if taskResult.Url != "" {
@@ -565,13 +578,17 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		return
 	}
 	// 3. 兜底：按实际生成图片数多退少补（适用于所有计费模式，包括 tiered_expr）
-	// 条件：adaptor 填写了 ActualImages，且 BillingContext 记录了 RequestedN，且实际数与请求数不符
-	if bc := task.PrivateData.BillingContext; bc != nil &&
-		bc.RequestedN > 0 &&
+	// 触发条件：adaptor 填写了 ExpectedImages（实际发给上游 API 的 OutputImageCount）且 > 1，
+	// 且 ActualImages（实际返回数）与 ExpectedImages 不符。
+	// 使用 ExpectedImages 而非 BillingContext.RequestedN 作为除数，确保与预扣逻辑一致：
+	//   预扣：计费表达式用 param("n") ≈ OutputImageCount，quota = pricePerImage * ExpectedImages
+	//   结算：quota * ActualImages / ExpectedImages = pricePerImage * ActualImages
+	// 两者基准相同，不会出现因 n 与 OutputImageCount 不一致导致的误差。
+	if taskResult.ExpectedImages > 1 &&
 		taskResult.ActualImages > 0 &&
-		taskResult.ActualImages != bc.RequestedN {
-		actualQuota := task.Quota * taskResult.ActualImages / bc.RequestedN
-		reason := fmt.Sprintf("image count adjust: requested=%d actual=%d", bc.RequestedN, taskResult.ActualImages)
+		taskResult.ActualImages != taskResult.ExpectedImages {
+		actualQuota := task.Quota * taskResult.ActualImages / taskResult.ExpectedImages
+		reason := fmt.Sprintf("image count adjust: expected(OutputImageCount)=%d actual=%d", taskResult.ExpectedImages, taskResult.ActualImages)
 		RecalculateTaskQuota(ctx, task, actualQuota, reason)
 		return
 	}

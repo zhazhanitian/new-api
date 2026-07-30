@@ -282,11 +282,18 @@ func ValidateImageTaskRequest(c *gin.Context, info *RelayInfo) *dto.TaskError {
 			req.Images = urls
 		}
 	}
-	// image（单图）→ 合并进 Images
-	if len(imgReq.Image) > 0 {
+	// image → 合并进 Images，兼容字符串和数组两种格式：
+	//   字符串："image": "https://example.com/img.jpg"
+	//   数组：  "image": ["https://example.com/img.jpg"] 或多张
+	if len(imgReq.Image) > 0 && len(req.Images) == 0 {
 		var s string
-		if json.Unmarshal(imgReq.Image, &s) == nil && s != "" && len(req.Images) == 0 {
+		if json.Unmarshal(imgReq.Image, &s) == nil && s != "" {
 			req.Images = []string{s}
+		} else {
+			var urls []string
+			if json.Unmarshal(imgReq.Image, &urls) == nil && len(urls) > 0 {
+				req.Images = urls
+			}
 		}
 	}
 	// extra_fields → Metadata（渠道私有扩展参数通道，与同步接口 ConvertImageRequest 读取 ExtraFields 保持对称）
