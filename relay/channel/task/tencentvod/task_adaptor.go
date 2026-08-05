@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,6 +92,125 @@ type describeTaskRequest struct {
 	TaskId   string `json:"TaskId"`
 }
 
+// ── Video request structs ─────────────────────────────────────────────────────
+
+// videoFileInfo corresponds to AigcVideoTaskInputFileInfo.
+//
+// Scope notes:
+//   - Type / FileId / Url: [shared] present in both image and video tasks
+//   - Category / Usage / ReferenceType / Text: [video-only]
+//   - Base64: [image-only], not supported for video (omitted)
+type videoFileInfo struct {
+	Type          string `json:"Type,omitempty"`          // [shared] "Url" | "File"
+	FileId        string `json:"FileId,omitempty"`        // [shared] VOD file ID (not exposed externally)
+	Url           string `json:"Url,omitempty"`           // [shared] external URL
+	Category      string `json:"Category,omitempty"`      // [video-only] "Image" | "Video"
+	ReferenceType string `json:"ReferenceType,omitempty"` // [video-only] GV:"asset"/"style"; Kling+Video:"feature"/"base"; PixVerse:"subject"/"background"
+	Usage         string `json:"Usage,omitempty"`         // [video-only] "FirstFrame" | "Reference" | "LastFrame"
+	Text          string `json:"Text,omitempty"`          // [video-only] PixVerse multi-subject: name referenced in Prompt with @name
+}
+
+// videoOutputConfig corresponds to AigcVideoOutputConfig.
+//
+// Scope notes:
+//   - Resolution / AspectRatio: [shared concept] but values/formats differ significantly from the image side
+//   - Duration / AudioGeneration / EnhanceSwitch / FrameInterpolate: [video-only]
+//   - OutputImageCount / OutputFormat: [image-only], not present here
+type videoOutputConfig struct {
+	Duration         float64 `json:"Duration,omitempty"`         // [video-only] seconds; per-model constraints apply
+	Resolution       string  `json:"Resolution,omitempty"`       // [shared concept] differs from image side (see per-model table)
+	AspectRatio      string  `json:"AspectRatio,omitempty"`      // [shared concept] Hailuo does not support it
+	AudioGeneration  string  `json:"AudioGeneration,omitempty"`  // [video-only] "Enabled"/"Disabled"; GV/OS/Vidu/Kling only
+	EnhanceSwitch    string  `json:"EnhanceSwitch,omitempty"`    // [video-only] "Enabled"/"Disabled"; video super-resolution
+	FrameInterpolate string  `json:"FrameInterpolate,omitempty"` // [video-only] "Enabled"/"Disabled"; Vidu-exclusive
+}
+
+// createVideoTaskRequest corresponds to the CreateAigcVideoTask request body.
+//
+// Scope notes vs createTaskRequest (image):
+//   - LastFrameUrl / InputRegion: [video-only]
+//   - SceneType / ExtInfo: [shared] but semantics differ (see plan)
+//   - All other top-level fields: [shared]
+type createVideoTaskRequest struct {
+	SubAppId       int64              `json:"SubAppId,omitempty"`
+	ModelName      string             `json:"ModelName"`
+	ModelVersion   string             `json:"ModelVersion"`
+	Prompt         string             `json:"Prompt,omitempty"`
+	NegativePrompt string             `json:"NegativePrompt,omitempty"`
+	EnhancePrompt  string             `json:"EnhancePrompt,omitempty"`
+	FileInfos      []videoFileInfo    `json:"FileInfos,omitempty"`
+	LastFrameUrl   string             `json:"LastFrameUrl,omitempty"`  // [video-only]
+	OutputConfig   *videoOutputConfig `json:"OutputConfig,omitempty"`
+	Seed           int64              `json:"Seed,omitempty"`
+	SceneType      string             `json:"SceneType,omitempty"`
+	ExtInfo        string             `json:"ExtInfo,omitempty"`
+	InputRegion    string             `json:"InputRegion,omitempty"`   // [video-only] "Mainland"/"Oversea"
+}
+
+// videoTaskMetadata holds video-specific fields decoded from TaskSubmitReq.Metadata.
+//
+// Scope notes:
+//   - seed / negative_prompt / enhance_prompt / scene_type / ext_info: [shared] with image side
+//   - All remaining fields: [video-only]
+type videoTaskMetadata struct {
+	// [shared with image side]
+	Seed           int64  `json:"seed"`
+	NegativePrompt string `json:"negative_prompt"`
+	EnhancePrompt  string `json:"enhance_prompt"`
+	SceneType      string `json:"scene_type"`
+	ExtInfo        string `json:"ext_info"`
+
+	// [video-only]
+	AudioGeneration  string `json:"audio_generation"`   // "Enabled"/"Disabled"
+	EnhanceSwitch    string `json:"enhance_switch"`     // "Enabled"/"Disabled"
+	FrameInterpolate string `json:"frame_interpolate"`  // "Enabled"/"Disabled"; Vidu only
+	LastFrame        string `json:"last_frame"`         // tail-frame image URL
+	Resolution       string `json:"resolution"`         // fallback resolution (overridden by size)
+	InputRegion      string `json:"input_region"`       // "Mainland"/"Oversea"
+	ReferenceType    string `json:"reference_type"`
+	InputUsage       string `json:"input_usage"`        // force "Reference" mode for single image
+	VideoURL         string `json:"video_url"`          // video reference/edit input
+	// PixVerse multi-subject: JSON array [{"url":"...","type":"subject","name":"小猫"}]
+	PixverseSubjects string `json:"pixverse_subjects"`
+}
+
+// pixverseSubjectItem is one entry in the pixverse_subjects JSON array.
+type pixverseSubjectItem struct {
+	URL  string `json:"url"`
+	Type string `json:"type"` // "subject" or "background"
+	Name string `json:"name"`
+}
+
+// ── Video response struct ─────────────────────────────────────────────────────
+
+// aigcVideoTask is the sub-struct inside DescribeTaskDetail for video tasks.
+type aigcVideoTask struct {
+	Status     string `json:"Status"`
+	ErrCode    int    `json:"ErrCode"`
+	ErrCodeExt string `json:"ErrCodeExt"`
+	ErrMsg     string `json:"Message"`
+	// Progress is a 0-100 integer from the Tencent API; use directly for accurate progress reporting.
+	Progress int `json:"Progress"`
+	Output   *struct {
+		FileInfos []struct {
+			FileUrl string `json:"FileUrl"`
+			// UsageType discriminates video body ("") from auxiliary files:
+			//   ""         → video file body (take this one)
+			//   "scene_url"  → dynamic shot segment
+			//   "point_url"  → NeRF point cloud
+			//   "mesh_url"   → 3-D mesh
+			//   "image_url"  → cover/thumbnail
+			UsageType string `json:"UsageType"`
+			// MetaData carries output properties returned by Tencent upon completion.
+			// Duration is the actual video length in seconds with up to 8 decimal places of precision,
+			// used for post-completion billing reconciliation (多退少补).
+			MetaData *struct {
+				Duration float64 `json:"Duration"`
+			} `json:"MetaData,omitempty"`
+		} `json:"FileInfos"`
+	} `json:"Output,omitempty"`
+}
+
 type describeTaskResponse struct {
 	Response struct {
 		RequestId string `json:"RequestId"`
@@ -120,6 +240,9 @@ type describeTaskResponse struct {
 				} `json:"FileInfos"`
 			} `json:"Output,omitempty"`
 		} `json:"AigcImageTask,omitempty"`
+		// AigcVideoTask is non-nil for video tasks; AigcImageTask and AigcVideoTask are
+		// mutually exclusive — DescribeTaskDetail only returns one of them.
+		AigcVideoTask *aigcVideoTask `json:"AigcVideoTask,omitempty"`
 	} `json:"Response"`
 }
 
@@ -164,6 +287,9 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	if isVideoModel(info.OriginModelName) {
+		return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	}
 	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionImageGenerate)
 }
 
@@ -176,14 +302,21 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	if err != nil {
 		return err
 	}
+	// Reset body so the HTTP stack can send it after we read it for signing.
 	req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
+	// action must exactly match the value used in the TC3 signature; mismatch → AuthFailure.
+	action := "CreateAigcImageTask"
+	if isVideoModel(info.OriginModelName) {
+		action = "CreateAigcVideoTask"
+	}
+
 	ts := time.Now().Unix()
-	auth := buildAuthorization(a.secretId, a.secretKey, "CreateAigcImageTask", string(bodyBytes), ts)
+	auth := buildAuthorization(a.secretId, a.secretKey, action, string(bodyBytes), ts)
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Host", tencentVODHost)
-	req.Header.Set("X-TC-Action", "CreateAigcImageTask")
+	req.Header.Set("X-TC-Action", action)
 	req.Header.Set("X-TC-Version", "2018-07-17")
 	req.Header.Set("X-TC-Timestamp", fmt.Sprintf("%d", ts))
 	req.Header.Set("Authorization", auth)
@@ -193,6 +326,9 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
 	if a.subAppId == 0 {
 		return nil, fmt.Errorf("TencentVOD: SubAppId 未配置，请将渠道 API Key 格式设置为 subAppId|secretId|secretKey")
+	}
+	if isVideoModel(info.OriginModelName) {
+		return a.buildVideoRequestBody(c, info)
 	}
 
 	taskReq, err := relaycommon.GetTaskRequest(c)
@@ -380,6 +516,230 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return bytes.NewReader(data), nil
 }
 
+// buildVideoRequestBody constructs the CreateAigcVideoTask JSON request body.
+func (a *TaskAdaptor) buildVideoRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	taskReq, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil, err
+	}
+
+	var meta videoTaskMetadata
+	_ = taskcommon.UnmarshalMetadata(taskReq.Metadata, &meta)
+
+	tencentModelName := getVideoModelName(info.OriginModelName)
+	modelVersion := getVideoModelVersion(info.OriginModelName)
+
+	body := createVideoTaskRequest{
+		SubAppId:       a.subAppId,
+		ModelName:      tencentModelName,
+		ModelVersion:   modelVersion,
+		Prompt:         taskReq.Prompt,
+		Seed:           meta.Seed,
+		NegativePrompt: meta.NegativePrompt,
+		EnhancePrompt:  meta.EnhancePrompt,
+	}
+
+	// ── ExtInfo ────────────────────────────────────────────────────────────────
+	if meta.ExtInfo != "" {
+		body.ExtInfo = meta.ExtInfo
+	}
+
+	// ── SceneType (Kling / Vidu only; warn and drop for unsupported models) ───
+	if meta.SceneType != "" {
+		if sceneTypeSupported(tencentModelName) {
+			body.SceneType = meta.SceneType
+		} else {
+			common.SysLog(fmt.Sprintf("[TencentVOD] video BuildRequestBody: model %s does not support SceneType=%s, ignoring",
+				tencentModelName, meta.SceneType))
+		}
+	}
+
+	// ── InputRegion ────────────────────────────────────────────────────────────
+	if meta.InputRegion != "" {
+		body.InputRegion = meta.InputRegion
+	}
+
+	// ── OutputConfig ───────────────────────────────────────────────────────────
+	cfg := &videoOutputConfig{}
+	hasConfig := false
+
+	// Duration: prefer taskReq.Duration (int); fall back to taskReq.Seconds (string).
+	requestedDur := float64(taskReq.Duration)
+	if requestedDur == 0 && taskReq.Seconds != "" {
+		if v, parseErr := strconv.Atoi(taskReq.Seconds); parseErr == nil {
+			requestedDur = float64(v)
+		}
+	}
+	dur := getVideoDuration(tencentModelName, requestedDur)
+	if dur > 0 {
+		cfg.Duration = dur
+		hasConfig = true
+	}
+	// 记录预扣计费时长：表达式里用的有效时长（0→各模型默认值），用于任务完成后多退少补。
+	info.BilledDurationSec = getBillingDuration(tencentModelName, dur, requestedDur)
+
+	// Resolution: size > metadata.resolution
+	sizeHint := taskReq.Size
+	if sizeHint == "" {
+		sizeHint = meta.Resolution
+	}
+	res := getVideoResolution(tencentModelName, sizeHint)
+	if res != "" {
+		cfg.Resolution = res
+		hasConfig = true
+	}
+
+	// AspectRatio: only when there are no input images (i2v suppresses AspectRatio for Kling)
+	// We resolve this after building FileInfos; store temporarily.
+	willHaveFileInfos := len(taskReq.Images) > 0 || meta.VideoURL != "" || meta.PixverseSubjects != ""
+
+	var aspectRatioForKling string
+	if tencentModelName == "Kling" && willHaveFileInfos {
+		// Kling i2v: aspect ratio is determined by the first frame image, do not send AspectRatio.
+		aspectRatioForKling = ""
+	} else {
+		ar := getVideoAspectRatio(tencentModelName, modelVersion, taskReq.Size)
+		if ar != "" {
+			cfg.AspectRatio = ar
+			hasConfig = true
+		}
+		aspectRatioForKling = ar
+	}
+	_ = aspectRatioForKling // used above; suppress unused warning
+
+	// AudioGeneration
+	if meta.AudioGeneration != "" && audioGenerationSupported(tencentModelName) {
+		cfg.AudioGeneration = meta.AudioGeneration
+		hasConfig = true
+	}
+
+	// EnhanceSwitch
+	if meta.EnhanceSwitch != "" {
+		cfg.EnhanceSwitch = meta.EnhanceSwitch
+		hasConfig = true
+	}
+
+	// FrameInterpolate (Vidu-exclusive)
+	if meta.FrameInterpolate != "" && frameInterpolateSupported(tencentModelName) {
+		cfg.FrameInterpolate = meta.FrameInterpolate
+		hasConfig = true
+	}
+
+	if hasConfig {
+		body.OutputConfig = cfg
+	}
+
+	// ── FileInfos ──────────────────────────────────────────────────────────────
+	// PixVerse multi-subject: metadata.pixverse_subjects takes priority over taskReq.Images.
+	if meta.PixverseSubjects != "" && tencentModelName == "PixVerse" {
+		var subjects []pixverseSubjectItem
+		if jsonErr := common.Unmarshal([]byte(meta.PixverseSubjects), &subjects); jsonErr == nil {
+			for _, s := range subjects {
+				if s.URL != "" {
+					body.FileInfos = append(body.FileInfos, videoFileInfo{
+						Type:          "Url",
+						Category:      "Image",
+						Url:           s.URL,
+						Usage:         "Reference",
+						ReferenceType: s.Type,
+						Text:          s.Name,
+					})
+				}
+			}
+		} else {
+			common.SysLog(fmt.Sprintf("[TencentVOD] video BuildRequestBody: failed to parse pixverse_subjects: %v", jsonErr))
+		}
+	} else {
+		images := taskReq.Images
+		switch {
+		case len(images) == 0:
+			// t2v mode: no FileInfos
+
+		case len(images) == 1 && meta.LastFrame != "":
+			// First+last frame mode
+			if strings.TrimSpace(images[0]) != "" {
+				body.FileInfos = append(body.FileInfos, videoFileInfo{
+					Type:     "Url",
+					Category: "Image",
+					Url:      images[0],
+					Usage:    "FirstFrame",
+				})
+			}
+			body.LastFrameUrl = meta.LastFrame
+
+		case len(images) == 1 && strings.EqualFold(meta.InputUsage, "Reference"):
+			// Reference image mode (single image, forced by caller)
+			if strings.TrimSpace(images[0]) != "" {
+				fi := videoFileInfo{
+					Type:     "Url",
+					Category: "Image",
+					Url:      images[0],
+					Usage:    "Reference",
+				}
+				if meta.ReferenceType != "" {
+					fi.ReferenceType = meta.ReferenceType
+				}
+				body.FileInfos = append(body.FileInfos, fi)
+			}
+
+		case len(images) == 1:
+			// Default i2v first-frame mode
+			if strings.TrimSpace(images[0]) != "" {
+				body.FileInfos = append(body.FileInfos, videoFileInfo{
+					Type:     "Url",
+					Category: "Image",
+					Url:      images[0],
+					Usage:    "FirstFrame",
+				})
+			}
+
+		default:
+			// Multiple images: first → FirstFrame, rest → Reference
+			if strings.TrimSpace(images[0]) != "" {
+				body.FileInfos = append(body.FileInfos, videoFileInfo{
+					Type:     "Url",
+					Category: "Image",
+					Url:      images[0],
+					Usage:    "FirstFrame",
+				})
+			}
+			for _, img := range images[1:] {
+				if strings.TrimSpace(img) != "" {
+					fi := videoFileInfo{
+						Type:     "Url",
+						Category: "Image",
+						Url:      img,
+						Usage:    "Reference",
+					}
+					if meta.ReferenceType != "" {
+						fi.ReferenceType = meta.ReferenceType
+					}
+					body.FileInfos = append(body.FileInfos, fi)
+				}
+			}
+		}
+	}
+
+	// Append video reference/edit input (Kling / Vidu only)
+	if meta.VideoURL != "" {
+		body.FileInfos = append(body.FileInfos, videoFileInfo{
+			Type:     "Url",
+			Category: "Video",
+			Url:      meta.VideoURL,
+			Usage:    "FirstFrame",
+		})
+	}
+
+	data, err := common.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	common.SysLog(fmt.Sprintf("[TencentVOD] CreateAigcVideoTask request body: %s", string(data)))
+
+	return bytes.NewReader(data), nil
+}
+
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
@@ -392,7 +752,11 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	defer resp.Body.Close()
 
 	// 打印腾讯 VOD 原始响应，便于排查任务提交结果
-	common.SysLog(fmt.Sprintf("[TencentVOD] CreateAigcImageTask response (status=%d): %s", resp.StatusCode, string(bodyBytes)))
+	action := "CreateAigcImageTask"
+	if isVideoModel(info.OriginModelName) {
+		action = "CreateAigcVideoTask"
+	}
+	common.SysLog(fmt.Sprintf("[TencentVOD] %s response (status=%d): %s", action, resp.StatusCode, string(bodyBytes)))
 
 	var createResp createTaskResponse
 	if err := common.Unmarshal(bodyBytes, &createResp); err != nil {
@@ -485,6 +849,13 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		result.Progress = "100%"
 		return result, nil
 	}
+
+	// Dispatch to the video branch when AigcVideoTask is present in the response.
+	if descResp.Response.AigcVideoTask != nil {
+		return parseVideoTaskResult(descResp.Response.AigcVideoTask)
+	}
+
+	// ── Image task branch (existing logic) ───────────────────────────────────
 
 	// Use AigcImageTask.Status when available; fall back to top-level Status
 	taskStatus := descResp.Response.Status
@@ -579,6 +950,118 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return result, nil
 }
 
+// parseVideoTaskResult converts an aigcVideoTask poll response into a TaskInfo.
+//
+// Status mapping:
+//
+//	PROCESSING → InProgress  (use actual Progress integer)
+//	FINISH + ErrCode==0 → Success
+//	FINISH + ErrCode!=0 → Failure
+//	others → Queued
+//
+// Video URL selection: take the first FileInfos entry where UsageType == "" and FileUrl != "".
+// Other UsageType values (scene_url / point_url / mesh_url / image_url) are auxiliary outputs.
+func parseVideoTaskResult(task *aigcVideoTask) (*relaycommon.TaskInfo, error) {
+	result := &relaycommon.TaskInfo{}
+
+	switch task.Status {
+	case "PROCESSING", "WAITING":
+		result.Status = model.TaskStatusInProgress
+		// 轮询队列过滤条件：progress != "100%"（见 GetAllUnFinishSyncTasks）。
+		// 腾讯在视频生成完毕、输出文件就绪之前会短暂返回 Status=PROCESSING + Progress=100，
+		// 此时 Output.FileInfos 为空，视频尚未可用。若直接写 "100%" 会导致任务被踢出轮询队列，
+		// 永远拿不到 FileInfos。因此限制最高 99%，只有真正进入 SUCCESS/FINISH/FAIL 才写 100%。
+		p := task.Progress
+		if p >= 100 {
+			p = 99
+		}
+		result.Progress = fmt.Sprintf("%d%%", p)
+	case "SUCCESS", "FINISH":
+		if task.ErrCode != 0 || task.ErrCodeExt != "" {
+			result.Status = model.TaskStatusFailure
+			result.Progress = "100%"
+			result.Reason = task.ErrMsg
+			if result.Reason == "" {
+				result.Reason = task.ErrCodeExt
+			}
+		} else {
+			result.Status = model.TaskStatusSuccess
+			result.Progress = "100%"
+			if task.Output != nil {
+				for _, fi := range task.Output.FileInfos {
+					// UsageType "" → video body; skip auxiliary file types
+					if fi.UsageType == "" && fi.FileUrl != "" {
+						result.Url = fi.FileUrl
+						break
+					}
+				}
+			}
+		}
+	case "FAIL":
+		result.Status = model.TaskStatusFailure
+		result.Progress = "100%"
+		result.Reason = task.ErrMsg
+		if result.Reason == "" {
+			result.Reason = task.ErrCodeExt
+		}
+	default:
+		result.Status = model.TaskStatusQueued
+		result.Progress = "10%"
+	}
+	return result, nil
+}
+
+// AdjustBillingOnComplete implements duration-based 多退少补 for video tasks.
+//
+// Tencent bills with 8-decimal-place precision on the actual output duration,
+// so a 5s request that yields a 5.042s video should be charged for 5.042s, not 5s.
+//
+// Logic:
+//  1. Skip if PerCallBilling or no BilledDurationSec stored at submit time.
+//  2. Extract actual duration from AigcVideoTask.Output.FileInfos[0].MetaData.Duration.
+//  3. final_quota = task.Quota × (actualDuration / billedDuration), rounded to int.
+//
+// Returns 0 to keep the pre-charged amount unchanged when reconciliation is not applicable.
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, _ *relaycommon.TaskInfo) int {
+	bc := task.PrivateData.BillingContext
+	if bc == nil || bc.BilledDurationSec <= 0 {
+		return 0
+	}
+
+	// Parse the raw task data (DescribeTaskDetail response stored at poll completion).
+	var descResp describeTaskResponse
+	if err := common.Unmarshal(task.Data, &descResp); err != nil {
+		common.SysLog(fmt.Sprintf("[TencentVOD] AdjustBillingOnComplete: unmarshal task.Data failed for task %s: %v", task.TaskID, err))
+		return 0
+	}
+
+	videoTask := descResp.Response.AigcVideoTask
+	if videoTask == nil || videoTask.Output == nil {
+		return 0
+	}
+
+	// Find the actual output duration from the first video-body FileInfo.
+	var actualDuration float64
+	for _, fi := range videoTask.Output.FileInfos {
+		if fi.UsageType == "" && fi.MetaData != nil && fi.MetaData.Duration > 0 {
+			actualDuration = fi.MetaData.Duration
+			break
+		}
+	}
+	if actualDuration <= 0 {
+		common.SysLog(fmt.Sprintf("[TencentVOD] AdjustBillingOnComplete: no MetaData.Duration for task %s, keeping pre-charged quota", task.TaskID))
+		return 0
+	}
+
+	billedDur := bc.BilledDurationSec
+	finalQuota := int(float64(task.Quota) * actualDuration / billedDur)
+
+	common.SysLog(fmt.Sprintf("[TencentVOD] AdjustBillingOnComplete: task=%s billedDur=%.3f actualDur=%.8f preQuota=%d finalQuota=%d",
+		task.TaskID, billedDur, actualDuration, task.Quota, finalQuota))
+
+	return finalQuota
+}
+
 func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
 	var descResp describeTaskResponse
 	if err := common.Unmarshal(originTask.Data, &descResp); err != nil {
@@ -593,11 +1076,6 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	ov.CompletedAt = originTask.UpdatedAt
 	ov.Model = originTask.Properties.OriginModelName
 
-	if descResp.Response.AigcImageTask != nil &&
-		descResp.Response.AigcImageTask.Output != nil &&
-		len(descResp.Response.AigcImageTask.Output.FileInfos) > 0 {
-		ov.SetMetadata("url", descResp.Response.AigcImageTask.Output.FileInfos[0].FileUrl)
-	}
 	if descResp.Response.Error != nil {
 		ov.Error = &dto.OpenAIVideoError{
 			Message: descResp.Response.Error.Message,
@@ -605,8 +1083,35 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 		}
 	}
 
+	// Video task branch: extract URL from AigcVideoTask output.
+	if descResp.Response.AigcVideoTask != nil {
+		task := descResp.Response.AigcVideoTask
+		if task.Output != nil {
+			for _, fi := range task.Output.FileInfos {
+				// UsageType "" → video body; skip auxiliary outputs.
+				if fi.UsageType == "" && fi.FileUrl != "" {
+					ov.SetMetadata("url", fi.FileUrl)
+					break
+				}
+			}
+		}
+		return common.Marshal(ov)
+	}
+
+	// Image task branch (existing logic).
+	if descResp.Response.AigcImageTask != nil &&
+		descResp.Response.AigcImageTask.Output != nil &&
+		len(descResp.Response.AigcImageTask.Output.FileInfos) > 0 {
+		ov.SetMetadata("url", descResp.Response.AigcImageTask.Output.FileInfos[0].FileUrl)
+	}
+
 	return common.Marshal(ov)
 }
 
-func (a *TaskAdaptor) GetModelList() []string { return ModelList }
-func (a *TaskAdaptor) GetChannelName() string  { return ChannelName }
+func (a *TaskAdaptor) GetModelList() []string {
+	all := make([]string, 0, len(ModelList)+len(VideoModelList))
+	all = append(all, ModelList...)
+	all = append(all, VideoModelList...)
+	return all
+}
+func (a *TaskAdaptor) GetChannelName() string { return ChannelName }

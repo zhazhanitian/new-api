@@ -3788,6 +3788,8 @@
     "动态计费": "Dynamic pricing",
     "价格根据用量档位和请求条件动态调整": "Price adjusts dynamically based on usage tiers and request conditions",
     "分档价格表": "Tiered price table",
+    "单次费用": "Per-request fee",
+    "每秒费用": "Per-second fee",
     "条件乘数": "Condition multipliers",
     "将额外乘以上述价格": "will additionally multiply the above prices",
     "缓存创建-1h": "Cache create (1h)",

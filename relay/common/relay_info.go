@@ -160,6 +160,10 @@ type RelayInfo struct {
 	TieredBillingSnapshot *billingexpr.BillingSnapshot
 	BillingRequestInput   *billingexpr.RequestInput
 
+	// BilledDurationSec 预扣时的计费时长（秒），由适配器在 BuildRequestBody 时填写。
+	// 用于视频任务完成后按实际时长进行多退少补。0 表示不触发时长结算。
+	BilledDurationSec float64
+
 	Request dto.Request
 
 	// RequestConversionChain records request format conversions in order, e.g.

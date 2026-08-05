@@ -20,6 +20,8 @@ var defaultVendorRules = map[string]string{
 	"qwen":     "阿里巴巴",
 	"deepseek": "DeepSeek",
 	"abab":     "MiniMax",
+	"minimax":  "MiniMax",
+	"hailuo":   "MiniMax",
 	"ernie":    "百度",
 	"spark":    "讯飞",
 	"hunyuan":  "腾讯",
@@ -35,6 +37,7 @@ var defaultVendorRules = map[string]string{
 	"kling":    "快手",
 	"jimeng":   "即梦",
 	"vidu":     "Vidu",
+	"pixverse": "爱诗科技",
 }
 
 // 供应商默认图标映射
@@ -62,6 +65,7 @@ var defaultVendorIcons = map[string]string{
 	"快手":         "Kling.Color",
 	"即梦":         "Jimeng.Color",
 	"Vidu":       "Vidu",
+	"爱诗科技":      "PixVerse.Color",
 	"微软":         "AzureAI",
 	"Microsoft":  "AzureAI",
 	"Azure":      "AzureAI",

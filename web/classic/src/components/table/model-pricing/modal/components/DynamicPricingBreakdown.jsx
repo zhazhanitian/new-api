@@ -140,10 +140,17 @@ function describeGroup(group, t) {
   return parts.join(' && ');
 }
 
+// Detect per-second billing: expression references param("duration"), meaning
+// the tier fixedCost is a unit-price-per-second rather than a one-off charge.
+function isPerSecondBilling(exprStr) {
+  return typeof exprStr === 'string' && exprStr.includes('param("duration")');
+}
+
 export default function DynamicPricingBreakdown({ billingExpr, t }) {
   const { symbol, rate } = getCurrencyConfig();
   const { billingExpr: baseExpr, requestRuleExpr: ruleExpr } =
     splitBillingExprAndRequestRules(billingExpr || '');
+  const perSecond = isPerSecondBilling(billingExpr);
 
   const tiers = parseTiersFromExpr(baseExpr);
   const ruleGroups = tryParseRequestRuleExpr(ruleExpr || '');
@@ -196,7 +203,7 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
         render: (v) => v > 0 ? <Text strong>{`${symbol}${(v * rate).toFixed(4)}`}</Text> : '-',
       })),
     ...(hasFixedCost ? [{
-      title: t('单次费用'),
+      title: perSecond ? t('每秒费用') : t('单次费用'),
       dataIndex: 'fixedCost',
       render: (v) => v > 0
         ? <Text strong>{`${symbol}${quotaToPrice(v).toFixed(6)}`}</Text>
