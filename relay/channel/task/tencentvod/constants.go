@@ -5,6 +5,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
 const ChannelName = "TencentVOD"
@@ -364,6 +366,17 @@ var sizeMap = map[string]string{
 // ──────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ──────────────────────────────────────────────────────────────────────────────
+
+// resolveModelName returns the effective model name for Tencent API lookups.
+// When a channel model mapping is configured (e.g. "OG-image-2" → "gpt-image-2"),
+// UpstreamModelName holds the mapped target; otherwise it falls back to OriginModelName.
+// All model dispatch and version lookups should use this instead of OriginModelName directly.
+func resolveModelName(info *relaycommon.RelayInfo) string {
+	if info.UpstreamModelName != "" {
+		return info.UpstreamModelName
+	}
+	return info.OriginModelName
+}
 
 func modelToTencentName(originModel string) string {
 	if v, ok := modelNameMap[originModel]; ok {

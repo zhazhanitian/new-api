@@ -287,7 +287,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
-	if isVideoModel(info.OriginModelName) {
+	if isVideoModel(resolveModelName(info)) {
 		return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
 	}
 	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionImageGenerate)
@@ -307,7 +307,7 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 
 	// action must exactly match the value used in the TC3 signature; mismatch → AuthFailure.
 	action := "CreateAigcImageTask"
-	if isVideoModel(info.OriginModelName) {
+	if isVideoModel(resolveModelName(info)) {
 		action = "CreateAigcVideoTask"
 	}
 
@@ -327,7 +327,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if a.subAppId == 0 {
 		return nil, fmt.Errorf("TencentVOD: SubAppId 未配置，请将渠道 API Key 格式设置为 subAppId|secretId|secretKey")
 	}
-	if isVideoModel(info.OriginModelName) {
+	if isVideoModel(resolveModelName(info)) {
 		return a.buildVideoRequestBody(c, info)
 	}
 
@@ -344,22 +344,23 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if quality == "" {
 		quality, _ = taskReq.Metadata["quality"].(string)
 	}
-	tencentModelName := modelToTencentName(info.OriginModelName)
+	lookupModel := resolveModelName(info)
+	tencentModelName := modelToTencentName(lookupModel)
 
 	// 各模型的 ModelVersion 来源不同，不能统一通过 quality 推断：
 	// - OG: quality 映射到精度档位（image2_low/medium/high），由 qualityToModelVersion 处理
 	// - GG/Kling/Vidu/Qwen/Hunyuan: 版本固定由原始模型名决定，quality 另独立映射到 Resolution
 	var modelVersion string
 	if tencentModelName == "GG" {
-		modelVersion = getGGVersion(info.OriginModelName)
+		modelVersion = getGGVersion(lookupModel)
 	} else if tencentModelName == "Kling" {
-		modelVersion = getKlingVersion(info.OriginModelName)
+		modelVersion = getKlingVersion(lookupModel)
 	} else if tencentModelName == "Vidu" {
-		modelVersion = getViduVersion(info.OriginModelName)
+		modelVersion = getViduVersion(lookupModel)
 	} else if tencentModelName == "Qwen" {
-		modelVersion = getQwenVersion(info.OriginModelName)
+		modelVersion = getQwenVersion(lookupModel)
 	} else if tencentModelName == "Hunyuan" {
-		modelVersion = getHunyuanVersion(info.OriginModelName)
+		modelVersion = getHunyuanVersion(lookupModel)
 	} else {
 		modelVersion = qualityToModelVersion(tencentModelName, quality)
 	}
@@ -526,8 +527,9 @@ func (a *TaskAdaptor) buildVideoRequestBody(c *gin.Context, info *relaycommon.Re
 	var meta videoTaskMetadata
 	_ = taskcommon.UnmarshalMetadata(taskReq.Metadata, &meta)
 
-	tencentModelName := getVideoModelName(info.OriginModelName)
-	modelVersion := getVideoModelVersion(info.OriginModelName)
+	lookupModel := resolveModelName(info)
+	tencentModelName := getVideoModelName(lookupModel)
+	modelVersion := getVideoModelVersion(lookupModel)
 
 	body := createVideoTaskRequest{
 		SubAppId:       a.subAppId,
@@ -753,7 +755,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 
 	// 打印腾讯 VOD 原始响应，便于排查任务提交结果
 	action := "CreateAigcImageTask"
-	if isVideoModel(info.OriginModelName) {
+	if isVideoModel(resolveModelName(info)) {
 		action = "CreateAigcVideoTask"
 	}
 	common.SysLog(fmt.Sprintf("[TencentVOD] %s response (status=%d): %s", action, resp.StatusCode, string(bodyBytes)))

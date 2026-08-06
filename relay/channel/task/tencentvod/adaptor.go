@@ -63,22 +63,23 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	quality := request.Quality
 	size := request.Size
 
-	tencentModelName := modelToTencentName(info.OriginModelName)
+	lookupModel := resolveModelName(info)
+	tencentModelName := modelToTencentName(lookupModel)
 
 	// 各模型的 ModelVersion 来源不同，不能统一通过 quality 推断：
 	// - OG: quality 映射到精度档位（image2_low/medium/high），由 qualityToModelVersion 处理
 	// - GG/Kling/Vidu/Qwen/Hunyuan: 版本固定由原始模型名决定，quality 另独立映射到 Resolution
 	var modelVersion string
 	if tencentModelName == "GG" {
-		modelVersion = getGGVersion(info.OriginModelName)
+		modelVersion = getGGVersion(lookupModel)
 	} else if tencentModelName == "Kling" {
-		modelVersion = getKlingVersion(info.OriginModelName)
+		modelVersion = getKlingVersion(lookupModel)
 	} else if tencentModelName == "Vidu" {
-		modelVersion = getViduVersion(info.OriginModelName)
+		modelVersion = getViduVersion(lookupModel)
 	} else if tencentModelName == "Qwen" {
-		modelVersion = getQwenVersion(info.OriginModelName)
+		modelVersion = getQwenVersion(lookupModel)
 	} else if tencentModelName == "Hunyuan" {
-		modelVersion = getHunyuanVersion(info.OriginModelName)
+		modelVersion = getHunyuanVersion(lookupModel)
 	} else {
 		modelVersion = qualityToModelVersion(tencentModelName, quality)
 	}
