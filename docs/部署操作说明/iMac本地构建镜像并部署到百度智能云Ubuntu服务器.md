@@ -265,3 +265,49 @@ docker image prune
 ```
 
 不要随便执行 `docker system prune -a --volumes`，它可能删除未使用镜像和数据卷。
+
+### 5. 本地 iMac 镜像越积越多，如何清理
+
+每次构建都会生成一个带日期 tag 的镜像（例如 `new-api:20260806-1004`），时间久了本地会积累很多旧版本。
+
+**查看当前所有 new-api 相关镜像：**
+
+```bash
+docker images | grep new-api
+```
+
+**删除指定 tag（用于精确清理某几个版本）：**
+
+```bash
+docker rmi new-api:20260731-1150
+docker rmi new-api:20260805-1214
+```
+
+注意：如果多个 tag 指向同一个镜像 ID（`docker images` 里 IMAGE ID 列相同），删除其中一个 tag 不会删除镜像本身，只有最后一个 tag 被删除时镜像才会真正释放磁盘。
+
+**批量删除所有旧的日期 tag（保留 `new-api-new-api:latest` 和最新的日期 tag）：**
+
+先确认当前最新的日期 tag：
+
+```bash
+docker images | grep '^new-api '
+```
+
+把你确认要保留的 tag 记下来，再批量删除其余的日期 tag：
+
+```bash
+# 删除所有 new-api:年份开头 的旧 tag（按需调整正则）
+docker images --format '{{.Repository}}:{{.Tag}}' | grep '^new-api:2' | xargs docker rmi
+```
+
+**清理所有本地不再使用的镜像（悬空 + 未被任何容器引用的镜像）：**
+
+```bash
+# 只清理悬空镜像（无 tag 的 <none>）
+docker image prune
+
+# 清理所有未被容器使用的镜像（更彻底，操作前确认没有容器依赖它们）
+docker image prune -a
+```
+
+日常建议：每次确认新版本在服务器上运行正常后，在本地删掉 2～3 个版本之前的旧日期 tag，保留最近 1～2 个版本用于应急回滚。
