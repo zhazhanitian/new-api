@@ -48,7 +48,9 @@ const ENDPOINT_TEMPLATE = {
   gemini: { path: '/v1beta/models/{model}:generateContent', method: 'POST' },
   'jina-rerank': { path: '/v1/rerank', method: 'POST' },
   'image-generation': { path: '/v1/images/generations', method: 'POST' },
+  'image-task': { path: '/v2/image-tasks', method: 'POST' },
   'openai-video': { path: '/v1/video/generations', method: 'POST' },
+  '3d-generation': { path: '/v1/3d/generations', method: 'POST' },
 };
 
 const EditPrefillGroupModal = ({

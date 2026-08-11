@@ -194,7 +194,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                       usdExchangeRate
                     )}
                   </span>{' '}
-                  / {t('request')}
+                  / {props.model.model_name.startsWith('hunyuan-3d-') ? t('credit') : t('request')}
                 </span>
               )}
             </div>

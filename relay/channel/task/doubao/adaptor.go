@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/QuantumNous/new-api/relay/channel/volcengine"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -120,7 +121,10 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	// Accept only POST /v1/video/generations as "generate" action.
+	if c.GetInt("relay_mode") == relayconstant.RelayMode3DTaskSubmit {
+		// 3D 任务：请求已由 relay_task.go 的前置处理解析到 context，直接校验
+		return validate3DRequest(c, info)
+	}
 	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
 }
 
@@ -138,7 +142,11 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 }
 
 // EstimateBilling 检测视频输入折扣、分辨率调价、有声/无声折扣，返回 OtherRatios。
+// 火山 3D 模型按 ModelRatio 走 token 计费，无需 OtherRatios，直接返回 nil。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	if c.GetInt("relay_mode") == relayconstant.RelayMode3DTaskSubmit {
+		return nil
+	}
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
@@ -234,6 +242,13 @@ func hasAudioInMetadata(metadata map[string]interface{}) bool {
 
 // BuildRequestBody converts request into Doubao specific format.
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	if c.GetInt("relay_mode") == relayconstant.RelayMode3DTaskSubmit {
+		body, taskErr := build3DRequestBody(c, info)
+		if taskErr != nil {
+			return nil, taskErr.Error
+		}
+		return body, nil
+	}
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil, err
@@ -264,6 +279,10 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 
 // DoResponse handles upstream response, returns taskID etc.
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+	if c.GetInt("relay_mode") == relayconstant.RelayMode3DTaskSubmit {
+		return do3DSubmitResponse(c, resp, info)
+	}
+
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
@@ -380,7 +399,17 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
-	common.SysLog(fmt.Sprintf("[doubao-video] poll response: body=%s", string(respBody)))
+	common.SysLog(fmt.Sprintf("[doubao] poll response: body=%s", string(respBody)))
+
+	// 通过响应体中的 model 字段判断是否为 3D 任务
+	var modelHint struct {
+		Model string `json:"model"`
+	}
+	_ = common.Unmarshal(respBody, &modelHint)
+	if is3DModel(modelHint.Model) {
+		return parse3DTaskResult(respBody)
+	}
+
 	resTask := responseTask{}
 	if err := common.Unmarshal(respBody, &resTask); err != nil {
 		return nil, errors.Wrap(err, "unmarshal task result failed")

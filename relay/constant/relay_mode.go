@@ -55,6 +55,9 @@ const (
 	RelayModeGemini
 
 	RelayModeResponsesCompact
+
+	RelayMode3DTaskSubmit    // POST /v1/3d/generations
+	RelayMode3DTaskFetchByID // GET  /v1/3d/generations/:task_id
 )
 
 func Path2RelayMode(path string) int {

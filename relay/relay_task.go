@@ -171,6 +171,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			return nil, taskErr
 		}
 	}
+	// 前置处理：3D 任务解析统一 OpenAI3DRequest
+	if c.GetInt("relay_mode") == relayconstant.RelayMode3DTaskSubmit {
+		if taskErr := relaycommon.Validate3DTaskRequest(c, info); taskErr != nil {
+			return nil, taskErr
+		}
+	}
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
 		return nil, taskErr
 	}
@@ -403,6 +409,7 @@ var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp 
 	relayconstant.RelayModeSunoFetch:          sunoFetchRespBodyBuilder,
 	relayconstant.RelayModeVideoFetchByID:     videoFetchByIDRespBodyBuilder,
 	relayconstant.RelayModeImageTaskFetchByID: imageTaskFetchByIDRespBodyBuilder,
+	relayconstant.RelayMode3DTaskFetchByID:    task3DFetchByIDRespBodyBuilder,
 }
 
 func RelayTaskFetch(c *gin.Context, relayMode int) (taskResp *dto.TaskError) {
@@ -696,6 +703,41 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Username:   task.Username,
 		Data:       task.Data,
 	}
+}
+
+// task3DFetchByIDRespBodyBuilder 是 GET /v1/3d/generations/:task_id 的查询构建器。
+// 委托给各适配器的 Task3DConverter.ConvertToOpenAI3DTask 进行响应转换。
+func task3DFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
+	taskId := c.Param("task_id")
+	userId := c.GetInt("id")
+
+	task, exist, err := model.GetByTaskId(userId, taskId)
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+		return
+	}
+	if !exist {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusNotFound)
+		return
+	}
+
+	adaptor := GetTaskAdaptor(task.Platform)
+	if adaptor == nil {
+		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid platform: %s", task.Platform), "invalid_platform", http.StatusInternalServerError)
+		return
+	}
+
+	converter, ok := adaptor.(channel.Task3DConverter)
+	if !ok {
+		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("adaptor %s does not implement Task3DConverter", task.Platform), "not_implemented", http.StatusNotImplemented)
+		return
+	}
+
+	respBody, err = converter.ConvertToOpenAI3DTask(task)
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "convert_3d_task_failed", http.StatusInternalServerError)
+	}
+	return
 }
 
 // imageTaskFetchByIDRespBodyBuilder 是 /v2/image-tasks/:task_id 的查询构建器

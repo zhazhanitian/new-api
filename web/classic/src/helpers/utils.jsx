@@ -756,6 +756,7 @@ export const calculateModelPrice = ({
       price: displayVal,
       isPerToken: false,
       isTokensDisplay: false,
+      isCredits: typeof record.model_name === 'string' && record.model_name.startsWith('hunyuan-3d-'),
       usedGroup,
       usedGroupRatio,
     };
@@ -891,7 +892,7 @@ export const getModelPriceItems = (
       key: 'fixed',
       label: t('模型价格'),
       value: priceData.price,
-      suffix: ` / ${t('次')}`,
+      suffix: priceData.isCredits ? ` / ${t('积分')}` : ` / ${t('次')}`,
     },
   ].filter((item) => item.value !== null && item.value !== undefined && item.value !== '');
 };

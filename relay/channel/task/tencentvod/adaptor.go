@@ -269,7 +269,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	}
 
 	ts := time.Now().Unix()
-	auth := buildAuthorization(a.secretId, a.secretKey, "CreateAigcImageTask", string(bodyBytes), ts)
+	auth := buildAuthorization(a.secretId, a.secretKey, "CreateAigcImageTask", string(bodyBytes), ts, tencentVODHost, tencentVODService)
 
 	req, err := http.NewRequest(http.MethodPost, a.baseURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
@@ -462,7 +462,7 @@ func (a *Adaptor) describeTask(taskID string) (*describeTaskResponse, error) {
 	}
 
 	ts := time.Now().Unix()
-	auth := buildAuthorization(a.secretId, a.secretKey, "DescribeTaskDetail", string(payload), ts)
+	auth := buildAuthorization(a.secretId, a.secretKey, "DescribeTaskDetail", string(payload), ts, tencentVODHost, tencentVODService)
 
 	req, err := http.NewRequest(http.MethodPost, a.baseURL, bytes.NewBuffer(payload))
 	if err != nil {

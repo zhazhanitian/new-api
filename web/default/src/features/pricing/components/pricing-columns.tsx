@@ -267,7 +267,7 @@ export function usePricingColumns(
           <div className='min-w-[100px]'>
             <span className='font-mono text-sm tabular-nums'>{price}</span>
             <div className='text-muted-foreground/50 text-[10px]'>
-              / {t('request')}
+              / {model.model_name.startsWith('hunyuan-3d-') ? t('credit') : t('request')}
             </div>
           </div>
         )

@@ -38,6 +38,8 @@ var defaultVendorRules = map[string]string{
 	"jimeng":   "即梦",
 	"vidu":     "Vidu",
 	"pixverse": "爱诗科技",
+	"hyper3d":  "影眸",
+	"hitem3d":  "数美",
 }
 
 // 供应商默认图标映射
@@ -66,6 +68,8 @@ var defaultVendorIcons = map[string]string{
 	"即梦":         "Jimeng.Color",
 	"Vidu":       "Vidu",
 	"爱诗科技":      "PixVerse.Color",
+	"影眸":         "Hyperbolic.Color",
+	"数美":         "Higress.Color",
 	"微软":         "AzureAI",
 	"Microsoft":  "AzureAI",
 	"Azure":      "AzureAI",

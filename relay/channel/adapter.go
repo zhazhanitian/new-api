@@ -82,6 +82,12 @@ type OpenAIVideoConverter interface {
 	ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
 }
 
+// Task3DConverter 由支持 3D 任务的 TaskAdaptor 实现，提供统一查询响应转换。
+// relay_task.go 中的 task3DFetchByIDRespBodyBuilder 会检测此接口。
+type Task3DConverter interface {
+	ConvertToOpenAI3DTask(originTask *model.Task) ([]byte, error)
+}
+
 // BackgroundTaskAdaptor is an optional interface implemented by TaskAdaptors
 // whose upstream image API is synchronous (i.e. the response is immediate but
 // may take tens of seconds). Implementing this interface makes the submit

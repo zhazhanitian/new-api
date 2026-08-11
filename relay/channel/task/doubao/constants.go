@@ -19,6 +19,11 @@ var ModelList = []string{
 	"doubao-seedream-4-5-t2i-250505",
 	"doubao-seedream-4-5-251128",
 	"doubao-seedream-5-0-t2i-250804",
+
+	// ── 3D generation (async) ─────────────────────────────────────────────
+	ModelSeed3D,  // doubao-seed3d-2-0-260328
+	ModelHyper3D, // hyper3d-gen2-260112（影眸）
+	ModelHitem3D, // hitem3d-2-0-251223（数美）
 }
 
 var ChannelName = "doubao-video"

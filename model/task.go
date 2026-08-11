@@ -105,6 +105,8 @@ type TaskPrivateData struct {
 	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
 	TokenId        int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
 	BillingContext *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
+	// 3D 任务专用
+	ReqFileFormat string `json:"req_file_format,omitempty"` // 火山3D：提交时请求的格式，用于查询响应无文件格式信息时回填
 }
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
@@ -117,6 +119,11 @@ type TaskBillingContext struct {
 	PerCallBilling    bool               `json:"per_call_billing,omitempty"`    // 按次计费：跳过轮询阶段的差额结算
 	RequestedN        int                `json:"requested_n,omitempty"`         // 请求生成的图片数（用于生图少图比例退款）
 	BilledDurationSec float64            `json:"billed_duration_sec,omitempty"` // 预扣时使用的计费时长（秒），用于完成时按实际时长多退少补
+	// 腾讯 AI3D 积分计费专用
+	EstimatedCredits        float64 `json:"estimated_credits,omitempty"`         // 提交时预估积分
+	ActualCredits           float64 `json:"actual_credits,omitempty"`            // 专业版查询返回的实际积分
+	AllowCompleteAdjustment bool    `json:"allow_complete_adjustment,omitempty"` // 允许按次计费任务在完成时进行积分校准（仅腾讯专业版）
+	QuotaPerUnit            float64 `json:"quota_per_unit,omitempty"`            // 提交时额度换算基准快照
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）

@@ -231,6 +231,35 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 	return nil
 }
 
+// Validate3DTaskRequest 专用于 POST /v1/3d/generations。
+// 解析统一 3D 请求体（{"model":"...","metadata":{...}}），校验 model 字段非空，
+// 并将解析结果以 "3d_request" 键存入 gin 上下文，供适配器通过 Get3DTaskRequest 取出。
+func Validate3DTaskRequest(c *gin.Context, info *RelayInfo) *dto.TaskError {
+	var req dto.OpenAI3DRequest
+	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+		return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+	}
+	if strings.TrimSpace(req.Model) == "" {
+		return createTaskError(fmt.Errorf("model is required"), "invalid_request", http.StatusBadRequest, true)
+	}
+	info.Action = constant.TaskAction3DGenerate
+	c.Set("3d_request", req)
+	return nil
+}
+
+// Get3DTaskRequest 从 gin 上下文中取出 Validate3DTaskRequest 存入的 3D 请求。
+func Get3DTaskRequest(c *gin.Context) (dto.OpenAI3DRequest, error) {
+	v, exists := c.Get("3d_request")
+	if !exists {
+		return dto.OpenAI3DRequest{}, fmt.Errorf("3d request not found in context")
+	}
+	req, ok := v.(dto.OpenAI3DRequest)
+	if !ok {
+		return dto.OpenAI3DRequest{}, fmt.Errorf("invalid 3d request type in context")
+	}
+	return req, nil
+}
+
 // ValidateImageTaskRequest 专用于 POST /v2/image-tasks（ImageRequest → TaskSubmitReq）。
 // 解析 OpenAI 兼容的 ImageRequest，转换为内部 TaskSubmitReq 后存入 context；
 // 下游 adaptor 通过 GetTaskRequest 取出，无需感知入口格式。

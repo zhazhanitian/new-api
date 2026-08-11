@@ -287,6 +287,9 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	if c.GetInt("relay_mode") == relayconstant.RelayMode3DTaskSubmit {
+		return validate3DRequest(c, info)
+	}
 	if isVideoModel(resolveModelName(info)) {
 		return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
 	}
@@ -294,6 +297,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if isAI3DAction(info.Action) {
+		return "https://" + tencentAI3DHost, nil
+	}
 	return a.baseURL, nil
 }
 
@@ -305,6 +311,15 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	// Reset body so the HTTP stack can send it after we read it for signing.
 	req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
+	// AI3D 路径：使用 ai3d.tencentcloudapi.com + 模型专属 Action + Version 2025-05-13
+	if isAI3DAction(info.Action) {
+		modelName := info.UpstreamModelName
+		if modelName == "" {
+			modelName = info.OriginModelName
+		}
+		return buildAI3DRequestHeader(a.secretId, a.secretKey, modelName, bodyBytes, req)
+	}
+
 	// action must exactly match the value used in the TC3 signature; mismatch → AuthFailure.
 	action := "CreateAigcImageTask"
 	if isVideoModel(resolveModelName(info)) {
@@ -312,7 +327,7 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	}
 
 	ts := time.Now().Unix()
-	auth := buildAuthorization(a.secretId, a.secretKey, action, string(bodyBytes), ts)
+	auth := buildAuthorization(a.secretId, a.secretKey, action, string(bodyBytes), ts, tencentVODHost, tencentVODService)
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Host", tencentVODHost)
@@ -324,6 +339,15 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 }
 
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
+	// AI3D 不使用 SubAppId，直接构建请求体
+	if isAI3DAction(info.Action) {
+		body, taskErr := buildAI3DRequestBody(c, info)
+		if taskErr != nil {
+			return nil, taskErr.Error
+		}
+		return body, nil
+	}
+
 	if a.subAppId == 0 {
 		return nil, fmt.Errorf("TencentVOD: SubAppId 未配置，请将渠道 API Key 格式设置为 subAppId|secretId|secretKey")
 	}
@@ -747,6 +771,11 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 }
 
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+	// AI3D 提交响应路径
+	if isAI3DAction(info.Action) {
+		return doAI3DSubmitResponse(c, resp, info)
+	}
+
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "read_response_failed", http.StatusInternalServerError)
@@ -786,8 +815,13 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	return createResp.Response.TaskId, bodyBytes, nil
 }
 
-// FetchTask calls DescribeTaskDetail to poll task status.
+// FetchTask calls DescribeTaskDetail (VOD) or the AI3D query endpoint to poll task status.
 func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
+	// AI3D 任务：通过 action 字段区分
+	if action, _ := body["action"].(string); action == constant.TaskAction3DGenerate {
+		return fetchAI3DTask(key, body, proxy)
+	}
+
 	taskID, _ := body["task_id"].(string)
 
 	// Re-parse credentials from the stored key
@@ -810,7 +844,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 
 	ts := time.Now().Unix()
-	auth := buildAuthorization(secretId, secretKey, "DescribeTaskDetail", string(payload), ts)
+	auth := buildAuthorization(secretId, secretKey, "DescribeTaskDetail", string(payload), ts, tencentVODHost, tencentVODService)
 
 	// 打印查询请求体，便于确认 TaskId 是否正确
 	common.SysLog(fmt.Sprintf("[TencentVOD] DescribeTaskDetail request body: %s", string(payload)))
@@ -834,6 +868,29 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
+	// AI3D 响应中含有 Status 字段但没有 AigcImageTask/AigcVideoTask 字段，
+	// 通过检查是否存在 Response.ResultFile3Ds 字段来判断是否为 AI3D 响应。
+	var ai3dHint struct {
+		Response struct {
+			// AI3D 响应没有 AigcImageTask/AigcVideoTask 字段，但有 Status 和 (可能的) ResultFile3Ds
+			AigcImageTask interface{} `json:"AigcImageTask"`
+			AigcVideoTask interface{} `json:"AigcVideoTask"`
+			// 专用于判断：AI3D 响应均有 Status 字段，VOD 响应顶层也有
+			// 用 ResultFile3Ds 存在性做区分不够可靠；改用 JobId 相关 action 路径标记
+			// 实际上，AI3D 查询响应 Response 中没有 TaskId 字段（VOD 有），可以此区分
+			TaskId string `json:"TaskId"`
+		} `json:"Response"`
+	}
+	_ = common.Unmarshal(respBody, &ai3dHint)
+	// VOD 的 DescribeTaskDetail 响应总有 Response.TaskId（或 AigcImageTask/AigcVideoTask）
+	// AI3D 的查询响应没有 TaskId 字段，也没有 AigcImageTask/AigcVideoTask
+	isAI3DResp := ai3dHint.Response.TaskId == "" &&
+		ai3dHint.Response.AigcImageTask == nil &&
+		ai3dHint.Response.AigcVideoTask == nil
+	if isAI3DResp {
+		return parseAI3DTaskResult(respBody)
+	}
+
 	// 打印腾讯 VOD 轮询原始响应，便于排查任务结果（图片数量、URL 等）
 	common.SysLog(fmt.Sprintf("[TencentVOD] DescribeTaskDetail response: %s", string(respBody)))
 
@@ -1025,6 +1082,11 @@ func parseVideoTaskResult(task *aigcVideoTask) (*relaycommon.TaskInfo, error) {
 //
 // Returns 0 to keep the pre-charged amount unchanged when reconciliation is not applicable.
 func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, _ *relaycommon.TaskInfo) int {
+	// AI3D 专业版：按实际积分多退少补
+	if task.Action == constant.TaskAction3DGenerate {
+		return adjustAI3DBillingOnComplete(task)
+	}
+
 	bc := task.PrivateData.BillingContext
 	if bc == nil || bc.BilledDurationSec <= 0 {
 		return 0
@@ -1110,10 +1172,33 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	return common.Marshal(ov)
 }
 
+// EstimateBilling 腾讯 AI3D 按积分估算预扣额度；视频/图片任务无预估调整返回 nil。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	if !isAI3DAction(info.Action) {
+		return nil
+	}
+	req, err := relaycommon.Get3DTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+	meta := parseAI3DMetadata(req.Metadata)
+	modelName := info.UpstreamModelName
+	if modelName == "" {
+		modelName = info.OriginModelName
+	}
+	credits := estimateAI3DCredits(modelName, req, meta)
+	validateAI3DEstimatedCredits(modelName, credits)
+	if credits <= 1 {
+		return nil
+	}
+	return map[string]float64{"credits": float64(credits)}
+}
+
 func (a *TaskAdaptor) GetModelList() []string {
-	all := make([]string, 0, len(ModelList)+len(VideoModelList))
+	all := make([]string, 0, len(ModelList)+len(VideoModelList)+len(ai3DModelList))
 	all = append(all, ModelList...)
 	all = append(all, VideoModelList...)
+	all = append(all, ai3DModelList...)
 	return all
 }
 func (a *TaskAdaptor) GetChannelName() string { return ChannelName }

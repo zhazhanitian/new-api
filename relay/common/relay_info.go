@@ -680,6 +680,19 @@ type TaskRelayInfo struct {
 	// background goroutines where gin.Context is no longer available.
 	// Set by RelayTaskSubmit before returning when BackgroundAdaptor is non-nil.
 	BackgroundTaskReq *TaskSubmitReq
+
+	// 3D 任务计费辅助字段，由适配器在 EstimateBilling / BuildRequestBody 时写入，
+	// controller 在创建 Task 时读取并存入 BillingContext / PrivateData。
+
+	// AllowCompleteAdjustment 允许按次计费任务在完成时进行积分校准（仅腾讯AI3D专业版）。
+	AllowCompleteAdjustment bool
+	// EstimatedCredits 提交时预估积分（用于日志审计和计费验证）。
+	EstimatedCredits float64
+	// QuotaPerUnit 提交时 QuotaPerUnit 快照，差额结算时保持与预扣一致。
+	QuotaPerUnit float64
+	// ReqFileFormat 3D 任务提交时请求的输出格式（火山影眸/数美），
+	// 查询响应没有格式字段时用于回填 files[0].format。
+	ReqFileFormat string
 }
 
 type TaskSubmitReq struct {

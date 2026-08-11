@@ -15,19 +15,22 @@ const (
 	tencentAlgorithm  = "TC3-HMAC-SHA256"
 )
 
-// buildAuthorization generates a TC3-HMAC-SHA256 Authorization header value for
-// the Tencent Cloud VOD API.
+// buildAuthorization generates a TC3-HMAC-SHA256 Authorization header value.
+// host and service are parameterized so the same function works for both VOD
+// (vod.tencentcloudapi.com / vod) and AI3D (ai3d.tencentcloudapi.com / ai3d).
 //
-//	action  — e.g. "CreateAigcImageTask" or "DescribeTaskDetail"
+//	action  — e.g. "CreateAigcImageTask", "SubmitHunyuanTo3DRapidJob"
 //	payload — raw JSON request body
-func buildAuthorization(secretID, secretKey, action, payload string, ts int64) string {
+//	host    — e.g. tencentVODHost or tencentAI3DHost
+//	service — e.g. tencentVODService or tencentAI3DService
+func buildAuthorization(secretID, secretKey, action, payload string, ts int64, host, service string) string {
 	t := time.Unix(ts, 0).UTC()
 	date := t.Format("2006-01-02")
 
 	// Step 1: canonical request
 	payloadHash := sha256hex([]byte(payload))
 	canonicalHeaders := fmt.Sprintf("content-type:application/json\nhost:%s\nx-tc-action:%s\n",
-		tencentVODHost, strings.ToLower(action))
+		host, strings.ToLower(action))
 	signedHeaders := "content-type;host;x-tc-action"
 
 	canonicalRequest := strings.Join([]string{
@@ -40,7 +43,7 @@ func buildAuthorization(secretID, secretKey, action, payload string, ts int64) s
 	}, "\n")
 
 	// Step 2: string to sign
-	credentialScope := fmt.Sprintf("%s/%s/tc3_request", date, tencentVODService)
+	credentialScope := fmt.Sprintf("%s/%s/tc3_request", date, service)
 	stringToSign := strings.Join([]string{
 		tencentAlgorithm,
 		fmt.Sprintf("%d", ts),
@@ -50,7 +53,7 @@ func buildAuthorization(secretID, secretKey, action, payload string, ts int64) s
 
 	// Step 3: signing key
 	secretDate := hmacSHA256([]byte("TC3"+secretKey), []byte(date))
-	secretService := hmacSHA256(secretDate, []byte(tencentVODService))
+	secretService := hmacSHA256(secretDate, []byte(service))
 	secretSigning := hmacSHA256(secretService, []byte("tc3_request"))
 	signature := hex.EncodeToString(hmacSHA256(secretSigning, []byte(stringToSign)))
 
