@@ -103,6 +103,7 @@ export function getChannelTypeIcon(type: number): string {
     56: 'Replicate', // Replicate
     58: 'Tencent', // TencentVOD
     59: 'Qwen',   // JoyAgent (Alibaba-backed)
+    60: 'OpenAI', // APIMart Suno (use generic icon)
 
     // Tools & Platforms
     37: 'Dify', // Dify

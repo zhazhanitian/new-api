@@ -53,6 +53,7 @@ const ENDPOINT_TEMPLATE = {
   'image-task': { path: '/v2/image-tasks', method: 'POST' },
   'openai-video': { path: '/v1/video/generations', method: 'POST' },
   '3d-generation': { path: '/v1/3d/generations', method: 'POST' },
+  'music-generation': { path: '/v1/music/generations', method: 'POST' },
 };
 
 const nameRuleOptions = [

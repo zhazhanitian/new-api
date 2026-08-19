@@ -62,6 +62,44 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		info.OriginTaskID = videoID
 	}
 
+	// ── Music task origin resolution (Suno) ──────────────────────────────────────
+	// Suno 任务引用（suno-cover、suno-extend、suno-persona 等）通过请求体 task_id /
+	// task_ids 字段指向前一次任务。这里提前查出原始任务并锁定渠道，确保后续请求使用
+	// 与原始任务相同的 APIMart 账号（不同 API Key 下的 task_id 不互通）。
+	if strings.Contains(path, "/v1/music/generations") && c.Request.Method == "POST" {
+		var musicRef struct {
+			TaskID  string   `json:"task_id"`
+			TaskIDs []string `json:"task_ids"`
+		}
+		if peekErr := common.UnmarshalBodyReusable(c, &musicRef); peekErr == nil {
+			originID := musicRef.TaskID
+			if originID == "" && len(musicRef.TaskIDs) > 0 {
+				originID = musicRef.TaskIDs[0]
+			}
+			if originID != "" {
+				if originTask, exist, dbErr := model.GetByTaskId(info.UserId, originID); dbErr == nil && exist && originTask != nil {
+					if ch, chErr := model.GetChannelById(originTask.ChannelId, true); chErr == nil &&
+						ch != nil && ch.Status == common.ChannelStatusEnabled {
+						info.LockedChannel = ch
+						// 注意：此时 info.ChannelMeta 尚未初始化（InitChannelMeta 在 RelayTaskSubmit 中
+						// 才调用），不能通过 info.ChannelId 等字段访问。改用 context key 直接读取。
+						currentChannelID := common.GetContextKeyInt(c, constant.ContextKeyChannelId)
+						if originTask.ChannelId != currentChannelID {
+							key, _, keyErr := ch.GetNextEnabledKey()
+							if keyErr == nil {
+								common.SetContextKey(c, constant.ContextKeyChannelKey, key)
+								common.SetContextKey(c, constant.ContextKeyChannelType, ch.Type)
+								common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, ch.GetBaseURL())
+								common.SetContextKey(c, constant.ContextKeyChannelId, originTask.ChannelId)
+								// info.ChannelMeta 为 nil，不能直接赋值；InitChannelMeta 会从 context 读取。
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	if info.OriginTaskID == "" {
 		return nil
 	}
@@ -100,7 +138,10 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	}
 	info.LockedChannel = ch
 
-	if originTask.ChannelId != info.ChannelId {
+	// info.ChannelMeta 此时为 nil（InitChannelMeta 在 RelayTaskSubmit 中才调用），
+	// 不能通过 info.ChannelId 等字段访问，改用 context key 直接读取当前渠道 ID。
+	currentChannelID := common.GetContextKeyInt(c, constant.ContextKeyChannelId)
+	if originTask.ChannelId != currentChannelID {
 		key, _, newAPIError := ch.GetNextEnabledKey()
 		if newAPIError != nil {
 			return service.TaskErrorWrapper(newAPIError, "channel_no_available_key", newAPIError.StatusCode)
@@ -109,11 +150,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		common.SetContextKey(c, constant.ContextKeyChannelType, ch.Type)
 		common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, ch.GetBaseURL())
 		common.SetContextKey(c, constant.ContextKeyChannelId, originTask.ChannelId)
-
-		info.ChannelBaseUrl = ch.GetBaseURL()
-		info.ChannelId = originTask.ChannelId
-		info.ChannelType = ch.Type
-		info.ApiKey = key
+		// info.ChannelMeta 为 nil，不能直接赋值；InitChannelMeta 会从 context 读取。
 	}
 
 	// 提取 remix 参数（时长、分辨率 → OtherRatios）
@@ -408,6 +445,7 @@ var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp 
 	relayconstant.RelayModeSunoFetchByID:      sunoFetchByIDRespBodyBuilder,
 	relayconstant.RelayModeSunoFetch:          sunoFetchRespBodyBuilder,
 	relayconstant.RelayModeVideoFetchByID:     videoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeMusicFetchByID:     musicFetchByIDRespBodyBuilder,
 	relayconstant.RelayModeImageTaskFetchByID: imageTaskFetchByIDRespBodyBuilder,
 	relayconstant.RelayMode3DTaskFetchByID:    task3DFetchByIDRespBodyBuilder,
 }
@@ -536,6 +574,63 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
 		Data: TaskModel2Dto(originTask),
+	})
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+	}
+	return
+}
+
+// musicFetchByIDRespBodyBuilder 是 GET /v1/music/generations/:task_id 的查询构建器。
+// 只返回对外有意义的字段，剔除 user_id / channel_id / amount 等内部信息。
+func musicFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.TaskError) {
+	taskId := c.Param("task_id")
+	if taskId == "" {
+		taskId = c.GetString("task_id")
+	}
+	userId := c.GetInt("id")
+
+	task, exist, err := model.GetByTaskId(userId, taskId)
+	if err != nil {
+		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+		return
+	}
+	if !exist {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusNotFound)
+		return
+	}
+
+	usd := float64(task.Quota) / common.QuotaPerUnit
+	cny := usd * operation_setting.USDExchangeRate
+	out := map[string]any{
+		"task_id":     task.TaskID,
+		"action":      task.Action,
+		"status":      string(task.Status),
+		"fail_reason": task.FailReason,
+		"progress":    task.Progress,
+		"submit_time": task.SubmitTime,
+		"start_time":  task.StartTime,
+		"finish_time": task.FinishTime,
+		"amount":      fmt.Sprintf("%.6f", cny),
+	}
+
+	// 从轮询时存储的原始 APIMart fetch 响应里提取 result。
+	// 使用 map[string]any 而非类型化 DTO，保证所有 31 个 Suno 工具的结果字段都能透传，
+	// 避免 dto.APIMartSunoResult 字段不全导致 lyrics/bpm/stems 等结果丢失。
+	if len(task.Data) > 0 {
+		var raw map[string]any
+		if err2 := common.Unmarshal(task.Data, &raw); err2 == nil {
+			if data, ok := raw["data"].(map[string]any); ok {
+				if result, exists := data["result"]; exists && result != nil {
+					out["result"] = result
+				}
+			}
+		}
+	}
+
+	respBody, err = common.Marshal(dto.TaskResponse[any]{
+		Code: "success",
+		Data: out,
 	})
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)

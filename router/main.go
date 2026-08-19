@@ -18,6 +18,7 @@ func SetRouter(router *gin.Engine, assets ThemeAssets) {
 	SetRelayRouter(router)
 	SetVideoRouter(router)
 	Set3DRouter(router)
+	SetMusicRouter(router)
 	SetPortraitRouter(router)
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {

@@ -277,8 +277,41 @@ var defaultModelRatio = map[string]float64{
 }
 
 var defaultModelPrice = map[string]float64{
+	// Legacy Suno (old proxy protocol, ChannelType=36)
 	"suno_music":                     0.1,
 	"suno_lyrics":                    0.01,
+	// APIMart Suno (ChannelType=60) — prices in USD (1 Credit = $0.10)
+	"suno-music":             0.05,    // 0.5 Credits
+	"suno-lyrics":            0.008,   // 0.08 Credits
+	"suno-aligned-lyrics":    0.0008,  // 0.008 Credits
+	"suno-bpm":               0.0008,  // 0.008 Credits
+	"suno-concat":            0.004,   // 0.04 Credits
+	"suno-generate-video":    0.004,   // 0.04 Credits
+	"suno-persona":           0.004,   // 0.04 Credits
+	"suno-upload":            0.004,   // 0.04 Credits
+	"suno-upsample-tags":     0.004,   // 0.04 Credits
+	"suno-vox":               0.004,   // 0.04 Credits
+	"suno-wav":               0.004,   // 0.04 Credits
+	"suno-crop":              0.008,   // 0.08 Credits
+	"suno-fade-in":           0.008,   // 0.08 Credits
+	"suno-fade-out":          0.008,   // 0.08 Credits
+	"suno-remove-section":    0.008,   // 0.08 Credits
+	"suno-sounds":            0.0096,  // 0.096 Credits
+	"suno-create-voice":      0.016,   // 0.16 Credits
+	"suno-adjust-speed":      0.024,   // 0.24 Credits
+	"suno-add-instrumental":  0.05,    // 0.5 Credits
+	"suno-add-stem":          0.05,    // 0.5 Credits
+	"suno-add-vocals":        0.05,    // 0.5 Credits
+	"suno-cover":             0.05,    // 0.5 Credits
+	"suno-extend":            0.05,    // 0.5 Credits
+	"suno-mashup":            0.05,    // 0.5 Credits
+	"suno-midi":              0.05,    // 0.5 Credits
+	"suno-remaster":          0.05,    // 0.5 Credits
+	"suno-replace-section":   0.05,    // 0.5 Credits
+	"suno-sample":            0.05,    // 0.5 Credits
+	"suno-inspo":             0.068,   // 0.68 Credits
+	"suno-stems":             0.1,     // 1.0 Credits
+	"suno-stems-all":         0.24,    // 2.4 Credits
 	"dall-e-3":                       0.04,
 	"imagen-3.0-generate-002":        0.03,
 	"black-forest-labs/flux-1.1-pro": 0.04,

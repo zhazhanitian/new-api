@@ -199,6 +199,11 @@ export const CHANNEL_OPTIONS = [
     color: 'blue',
     label: 'JoyAgent',
   },
+  {
+    value: 60,
+    color: 'purple',
+    label: 'APIMart Suno',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.

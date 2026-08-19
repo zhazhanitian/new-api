@@ -409,6 +409,10 @@ export function getChannelIcon(channelType) {
       return <Hunyuan.Color size={iconSize} />;
     case 59: // JoyAgent（阿里云百炼底层）
       return <Qwen.Color size={iconSize} />;
+    case 55: // Sora
+      return <OpenAI size={iconSize} />;
+    case 60: // APIMart Suno
+      return <Suno size={iconSize} />;
     case 8: // 自定义渠道
     case 22: // 知识库：FastGPT
       return <FastGPT.Color size={iconSize} />;
