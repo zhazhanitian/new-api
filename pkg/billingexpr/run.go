@@ -17,6 +17,7 @@ import (
 //   - len              — total input context length for tier conditions (never reduced by sub-category exclusion)
 //   - cr, cc, cc1h     — cache read / creation / creation-1h tokens
 //   - tier(name, value) — trace callback that records which tier matched
+//   - header(name), param(path), pixels(size), has(source, substr)
 //   - max, min, abs, ceil, floor — standard math helpers
 //
 // Returns the resulting float64 quota (before group ratio) and a TraceResult
@@ -82,6 +83,7 @@ func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (flo
 			}
 			return result.Value()
 		},
+		"pixels": pixelsOf,
 		"has": func(source interface{}, substr string) bool {
 			if source == nil || substr == "" {
 				return false

@@ -892,7 +892,8 @@ function RawExprEditor({ exprString, onChange, t }) {
               <code>max(a, b)</code>, <code>min(a, b)</code>,{' '}
               <code>ceil(x)</code>, <code>floor(x)</code>,{' '}
               <code>abs(x)</code>, <code>header(name)</code>,{' '}
-              <code>param(path)</code>, <code>has(source, text)</code>
+              <code>param(path)</code>, <code>pixels(size)</code>,{' '}
+              <code>has(source, text)</code>
             </div>
           </div>
         }
@@ -1266,6 +1267,7 @@ p 和 c 是兜底变量，代表所有没有被表达式单独定价的 token。
 - ceil(x)、floor(x)、abs(x) — 向上取整、向下取整、绝对值
 - header(name) — 读取请求头
 - param(path) — 读取请求体 JSON 路径（gjson 语法）
+- pixels(size) — 将图片 size（宽x高 或 1K/2K/4K）解析为总像素
 - has(source, substr) — 子字符串检查
 - hour(tz)、minute(tz)、weekday(tz)、month(tz)、day(tz) — 时间函数，tz 为时区如 "Asia/Shanghai"
 

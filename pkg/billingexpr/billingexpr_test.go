@@ -260,6 +260,122 @@ func TestCeilFloor(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// pixels() — parse WxH / named tiers into total pixel count
+// ---------------------------------------------------------------------------
+
+func TestPixels_WxH(t *testing.T) {
+	cost, _, err := billingexpr.RunExprWithRequest(
+		`pixels(param("size"))`,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Body: []byte(`{"size":"2048x1024"}`)},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(cost-2048*1024) > 1e-6 {
+		t.Errorf("pixels = %f, want %f", cost, 2048.0*1024)
+	}
+}
+
+func TestPixels_NamedTiersAndSeparators(t *testing.T) {
+	cases := []struct {
+		size string
+		want float64
+	}{
+		{"1024x1024", 1024 * 1024},
+		{"1024X1792", 1024 * 1792},
+		{"1024*1536", 1024 * 1536},
+		{"1024 × 1536", 1024 * 1536},
+		{"1K", 1024 * 1024},
+		{"2k", 2048 * 2048},
+		{"4K", 3840 * 2160},
+		{"auto", 0},
+		{"", 0},
+		{"not-a-size", 0},
+	}
+	for _, tt := range cases {
+		body := []byte(`{"size":"` + tt.size + `"}`)
+		if tt.size == "" {
+			body = []byte(`{}`)
+		}
+		cost, _, err := billingexpr.RunExprWithRequest(
+			`pixels(param("size"))`,
+			billingexpr.TokenParams{},
+			billingexpr.RequestInput{Body: body},
+		)
+		if err != nil {
+			t.Fatalf("size=%q: %v", tt.size, err)
+		}
+		if math.Abs(cost-tt.want) > 1e-6 {
+			t.Errorf("size=%q pixels=%f, want %f", tt.size, cost, tt.want)
+		}
+	}
+}
+
+// gpt-image-2 commercial expression: quality aliases + pixel-area size tiers.
+const gptImage2Expr = `
+let q = param("quality");
+let px = pixels(param("size"));
+let n = param("n") != nil ? param("n") : 1;
+let imgCount = param("image") == nil ? 0 : (param("image.#") != nil && param("image.#") > 0 ? param("image.#") : 1);
+(
+  (q == "high" || q == "hd") ? (
+    px > 2048 * 2048 ? tier("high-4K", 731507) :
+    px > 1024 * 1024 ? tier("high-2K", 439726) :
+    tier("high-1K", 216849)
+  ) : q == "medium" ? (
+    px > 2048 * 2048 ? tier("medium-4K", 182877) :
+    px > 1024 * 1024 ? tier("medium-2K", 109973) :
+    tier("medium-1K", 54521)
+  ) : (
+    px > 2048 * 2048 ? tier("low-4K", 20548) :
+    px > 1024 * 1024 ? tier("low-2K", 12329) :
+    tier("low-1K", 6164)
+  )
+) * n + imgCount * 13699
+`
+
+func TestGptImage2Expr_SizeAndQualityTiers(t *testing.T) {
+	cases := []struct {
+		name  string
+		body  string
+		tier  string
+		cost  float64
+	}{
+		{"default 1K low", `{}`, "low-1K", 6164},
+		{"1024x1024 high", `{"quality":"high","size":"1024x1024"}`, "high-1K", 216849},
+		{"1024x1536 high", `{"quality":"high","size":"1024x1536"}`, "high-2K", 439726},
+		{"1024x1792 high", `{"quality":"high","size":"1024x1792"}`, "high-2K", 439726},
+		{"2048x2048 high", `{"quality":"high","size":"2048x2048"}`, "high-2K", 439726},
+		{"2880x2880 high", `{"quality":"high","size":"2880x2880"}`, "high-4K", 731507},
+		{"hd alias", `{"quality":"hd","size":"1024x1024"}`, "high-1K", 216849},
+		{"standard is low", `{"quality":"standard","size":"1024x1024"}`, "low-1K", 6164},
+		{"named 4K", `{"quality":"medium","size":"4K"}`, "medium-4K", 182877},
+		{"n=2", `{"quality":"low","size":"1024x1024","n":2}`, "low-1K", 6164 * 2},
+		{"one ref image", `{"quality":"low","size":"1024x1024","image":"https://x"}`, "low-1K", 6164 + 13699},
+		{"two ref images", `{"quality":"low","size":"1024x1024","image":["a","b"]}`, "low-1K", 6164 + 13699*2},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			cost, trace, err := billingexpr.RunExprWithRequest(
+				gptImage2Expr,
+				billingexpr.TokenParams{},
+				billingexpr.RequestInput{Body: []byte(tt.body)},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if trace.MatchedTier != tt.tier {
+				t.Errorf("tier = %q, want %q", trace.MatchedTier, tt.tier)
+			}
+			if math.Abs(cost-tt.cost) > 1e-6 {
+				t.Errorf("cost = %f, want %f", cost, tt.cost)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Zero tokens
 // ---------------------------------------------------------------------------
 
