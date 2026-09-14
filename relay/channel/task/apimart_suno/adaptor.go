@@ -76,16 +76,25 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		)
 	}
 
-	// Version validation
-	if def.VersionRequired && req.Version == "" {
+	// version 与 custom_model_id 互斥（所有工具）
+	if req.Version != "" && req.CustomModelID != "" {
 		return service.TaskErrorWrapperLocal(
-			fmt.Errorf("version is required for model %s", modelID),
+			fmt.Errorf("version and custom_model_id are mutually exclusive; provide one or the other"),
+			"invalid_request", http.StatusBadRequest,
+		)
+	}
+
+	// suno-music 专项：version 或 custom_model_id 至少提供一个
+	if modelID == "suno-music" && req.Version == "" && req.CustomModelID == "" {
+		return service.TaskErrorWrapperLocal(
+			fmt.Errorf("suno-music requires either version (v6/v6-wild/v6-mini) or custom_model_id"),
 			"version_required", http.StatusBadRequest,
 		)
 	}
+
+	// Version dimension validation
 	if req.Version != "" && def.SupportedVersions == nil {
-		// Tool has no version dimension; ignore the field silently (per spec:
-		// "无版本维度的工具不得因客户端传入 version 而产生错误")
+		// Tool has no version dimension; ignore the field silently
 		req.Version = ""
 	}
 	if req.Version != "" && def.SupportedVersions != nil {
@@ -114,10 +123,30 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 
 	// inspo: 1-4 audio_urls
-	if def.UsesAudioURLs {
+	if modelID == "suno-inspo" {
 		if len(req.AudioURLs) < 1 || len(req.AudioURLs) > 4 {
 			return service.TaskErrorWrapperLocal(
 				fmt.Errorf("inspo requires 1-4 audio_urls, got %d", len(req.AudioURLs)),
+				"invalid_request", http.StatusBadRequest,
+			)
+		}
+	}
+
+	// create-model: 6-24 audio_urls
+	if modelID == "suno-create-model" {
+		if len(req.AudioURLs) < 6 || len(req.AudioURLs) > 24 {
+			return service.TaskErrorWrapperLocal(
+				fmt.Errorf("create-model requires 6-24 audio_urls, got %d", len(req.AudioURLs)),
+				"invalid_request", http.StatusBadRequest,
+			)
+		}
+	}
+
+	// download: format / formats 至少一个非空
+	if modelID == "suno-download" {
+		if len(req.Formats) == 0 && strings.TrimSpace(req.Format) == "" {
+			return service.TaskErrorWrapperLocal(
+				fmt.Errorf("suno-download requires at least one format (use 'formats' or 'format')"),
 				"invalid_request", http.StatusBadRequest,
 			)
 		}
@@ -156,11 +185,14 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 	}
 
-	// style_weight / weirdness_constraint / audio_weight: 0.00-1.00
+	// style_weight / weirdness_constraint / weirdness / audio_weight: 0.00-1.00
 	if err := validateRatio("style_weight", req.StyleWeight); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 	if err := validateRatio("weirdness_constraint", req.WeirdnessConstraint); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if err := validateRatio("weirdness", req.Weirdness); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 	if err := validateRatio("audio_weight", req.AudioWeight); err != nil {
@@ -284,7 +316,6 @@ func resolveUpstreamTaskID(userID int, internalID string) string {
 }
 
 // translateTaskIDs 返回一个副本，其中 task_id / task_ids 字段已替换为上游 ID。
-// 对不涉及任务引用的模型（suno-music、suno-upload 等）直接原样返回。
 func translateTaskIDs(req *dto.APIMartSunoRequest, def ToolDef, userID int) *dto.APIMartSunoRequest {
 	if def.UsesTaskIDs {
 		ids := make([]string, len(req.TaskIDs))
@@ -307,7 +338,6 @@ func translateTaskIDs(req *dto.APIMartSunoRequest, def ToolDef, userID int) *dto
 }
 
 // BuildRequestBody converts the parsed APIMartSunoRequest into the upstream JSON body.
-// Only fields relevant to the specific tool are included.
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
 	v, ok := c.Get("task_request")
 	if !ok {
@@ -348,6 +378,11 @@ func buildUpstreamBody(req *dto.APIMartSunoRequest, modelID string, def ToolDef)
 		body["version"] = req.Version
 	}
 
+	// custom_model_id（与 version 互斥，version 已在上面按 SupportedVersions!=nil 判断）
+	if req.CustomModelID != "" {
+		body["custom_model_id"] = req.CustomModelID
+	}
+
 	// Tool-specific source reference
 	if def.UsesTaskIDs {
 		body["task_ids"] = req.TaskIDs
@@ -363,6 +398,17 @@ func buildUpstreamBody(req *dto.APIMartSunoRequest, modelID string, def ToolDef)
 		if req.AudioIndex != nil {
 			body["audio_index"] = *req.AudioIndex
 		}
+	}
+
+	// V6 通用字段（所有支持的工具均透传）
+	if req.MaxMode != nil {
+		body["max_mode"] = *req.MaxMode
+	}
+	if req.Variety != "" {
+		body["variety"] = req.Variety
+	}
+	if req.AudioFormat != "" {
+		body["audio_format"] = req.AudioFormat
 	}
 
 	// Tool-specific body builders
@@ -428,6 +474,7 @@ func buildUpstreamBody(req *dto.APIMartSunoRequest, modelID string, def ToolDef)
 			body["infill_lyrics"] = req.InfillLyrics
 		}
 		addContextFields(req, body)
+		addOperationWeirdness(req, body)
 	case "suno-remaster":
 		if req.VariationCategory != "" {
 			body["variation_category"] = req.VariationCategory
@@ -437,6 +484,7 @@ func buildUpstreamBody(req *dto.APIMartSunoRequest, modelID string, def ToolDef)
 			body["continue_at"] = *req.ContinueAt
 		}
 		addCustomGenerationFields(req, body, false)
+		addOperationWeirdness(req, body)
 	case "suno-sample":
 		if req.StartS != nil {
 			body["start_s"] = *req.StartS
@@ -448,27 +496,33 @@ func buildUpstreamBody(req *dto.APIMartSunoRequest, modelID string, def ToolDef)
 			body["instrumental"] = *req.Instrumental
 		}
 		addCustomGenerationFields(req, body, false)
-	case "suno-cover", "suno-add-instrumental", "suno-add-vocals", "suno-add-stem",
-		"suno-mashup", "suno-inspo":
+		addOperationWeirdness(req, body)
+	case "suno-cover", "suno-mashup":
 		addCustomGenerationFields(req, body, false)
+		addOperationWeirdness(req, body)
+	case "suno-add-vocals", "suno-add-instrumental":
+		// 支持：custom, prompt, gpt_description, title, tags, negative_tags,
+		//       style_weight, weirdness, audio_weight, vocal_gender
+		// 不支持：auto_lyrics, persona_id, instrumental, duration_s
+		buildAddVocalsInstrumentalBody(req, body)
+		addOperationWeirdness(req, body)
+	case "suno-add-stem":
+		// 与 add-vocals 相比，还不支持 vocal_gender
+		buildAddStemBody(req, body)
+		addOperationWeirdness(req, body)
+	case "suno-inspo":
+		// 不支持 custom / instrumental / gpt_description / persona_id / duration_s
+		buildInspoBody(req, body)
+		addOperationWeirdness(req, body)
 	case "suno-persona":
 		body["name"] = req.Name
 		if req.Description != "" {
-			body["description"] = req.Description
+			body["describe"] = req.Description // 上游字段名为 describe
 		}
 		if req.Styles != "" {
 			body["styles"] = req.Styles
 		}
-		if req.VoxAudioID != "" {
-			body["vox_audio_id"] = req.VoxAudioID
-		}
-		if req.VocalStartS != nil {
-			body["vocal_start_s"] = *req.VocalStartS
-		}
-		if req.VocalEndS != nil {
-			body["vocal_end_s"] = *req.VocalEndS
-		}
-	case "suno-vox":
+		// V6: vox_audio_id 已废弃，不再透传
 		if req.VocalStartS != nil {
 			body["vocal_start_s"] = *req.VocalStartS
 		}
@@ -479,12 +533,74 @@ func buildUpstreamBody(req *dto.APIMartSunoRequest, modelID string, def ToolDef)
 		if req.StemType != "" {
 			body["stem_type"] = req.StemType
 		}
+		// suno-stems-all 不发 stem_type
+	case "suno-download":
+		// 合并 format（单数）和 formats（数组）
+		formats := req.Formats
+		if req.Format != "" {
+			// 避免重复
+			found := false
+			for _, f := range formats {
+				if strings.EqualFold(f, req.Format) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				formats = append(formats, req.Format)
+			}
+		}
+		if len(formats) > 0 {
+			body["formats"] = formats
+		}
+	case "suno-upload-cover":
+		// 上传公网 URL 翻唱
+		addCustomGenerationFields(req, body, false)
+		addOperationWeirdness(req, body)
+		if req.DurationS != nil {
+			body["duration_s"] = *req.DurationS
+		}
+	case "suno-upload-extend":
+		// 上传公网 URL 延伸（固定自定义模式，不发 custom/instrumental/gpt_description）
+		if req.ContinueAt != nil {
+			body["continue_at"] = *req.ContinueAt
+		}
+		if req.Prompt != "" {
+			body["prompt"] = req.Prompt
+		}
+		if req.Tags != "" {
+			body["tags"] = req.Tags
+		}
+		if req.Title != "" {
+			body["title"] = req.Title
+		}
+		if req.NegativeTags != "" {
+			body["negative_tags"] = req.NegativeTags
+		}
+		if req.DurationS != nil {
+			body["duration_s"] = *req.DurationS
+		}
+		if req.AutoLyrics != nil {
+			body["auto_lyrics"] = *req.AutoLyrics
+		}
+		if req.VocalGender != "" {
+			body["vocal_gender"] = req.VocalGender
+		}
+		if req.PersonaID != "" {
+			body["persona_id"] = req.PersonaID
+		}
+		addRatioFields(req, body)
+		addOperationWeirdness(req, body)
+	case "suno-create-model":
+		// audio_urls 已在通用层处理（UsesAudioURLs=true）
+		body["name"] = req.Name
 	}
 
 	return body
 }
 
 // buildMusicBody handles suno-music which uses "style" instead of "tags".
+// suno-music uses weirdness_constraint (not weirdness) per V6 spec.
 func buildMusicBody(req *dto.APIMartSunoRequest, body map[string]any) {
 	if req.Custom != nil {
 		body["custom"] = *req.Custom
@@ -514,7 +630,13 @@ func buildMusicBody(req *dto.APIMartSunoRequest, body map[string]any) {
 	if req.VocalGender != "" {
 		body["vocal_gender"] = req.VocalGender
 	}
+	// Duration (integer, custom=true only)
+	if req.Duration != nil {
+		body["duration"] = *req.Duration
+	}
+	// suno-music: use weirdness_constraint (V6 spec)
 	addRatioFields(req, body)
+	// weirdness_constraint is already handled in addRatioFields for suno-music
 }
 
 func buildLyricsBody(req *dto.APIMartSunoRequest, body map[string]any) {
@@ -565,6 +687,9 @@ func addCustomGenerationFields(req *dto.APIMartSunoRequest, body map[string]any,
 	if req.Instrumental != nil {
 		body["instrumental"] = *req.Instrumental
 	}
+	if req.DurationS != nil {
+		body["duration_s"] = *req.DurationS
+	}
 	addRatioFields(req, body)
 }
 
@@ -584,15 +709,111 @@ func addContextFields(req *dto.APIMartSunoRequest, body map[string]any) {
 	}
 }
 
+// addRatioFields sends style_weight, audio_weight.
+// weirdness handling is split: suno-music uses weirdness_constraint, operation tools use weirdness.
 func addRatioFields(req *dto.APIMartSunoRequest, body map[string]any) {
 	if req.StyleWeight != nil {
 		body["style_weight"] = *req.StyleWeight
 	}
+	if req.AudioWeight != nil {
+		body["audio_weight"] = *req.AudioWeight
+	}
+	// weirdness_constraint for suno-music (main generation)
 	if req.WeirdnessConstraint != nil {
 		body["weirdness_constraint"] = *req.WeirdnessConstraint
 	}
-	if req.AudioWeight != nil {
-		body["audio_weight"] = *req.AudioWeight
+}
+
+// buildAddVocalsInstrumentalBody builds request for suno-add-vocals and suno-add-instrumental.
+// Supported: custom, prompt, gpt_description, title, tags, negative_tags,
+//
+//	style_weight, weirdness, audio_weight, vocal_gender
+//
+// NOT supported: auto_lyrics, persona_id, instrumental, duration_s
+func buildAddVocalsInstrumentalBody(req *dto.APIMartSunoRequest, body map[string]any) {
+	if req.Custom != nil {
+		body["custom"] = *req.Custom
+	}
+	if req.Prompt != "" {
+		body["prompt"] = req.Prompt
+	}
+	if req.GptDescription != "" {
+		body["gpt_description"] = req.GptDescription
+	}
+	if req.Title != "" {
+		body["title"] = req.Title
+	}
+	if req.Tags != "" {
+		body["tags"] = req.Tags
+	}
+	if req.NegativeTags != "" {
+		body["negative_tags"] = req.NegativeTags
+	}
+	if req.VocalGender != "" {
+		body["vocal_gender"] = req.VocalGender
+	}
+	addRatioFields(req, body)
+}
+
+// buildAddStemBody builds request for suno-add-stem.
+// Same as add-vocals/instrumental but without vocal_gender.
+func buildAddStemBody(req *dto.APIMartSunoRequest, body map[string]any) {
+	if req.Custom != nil {
+		body["custom"] = *req.Custom
+	}
+	if req.Prompt != "" {
+		body["prompt"] = req.Prompt
+	}
+	if req.GptDescription != "" {
+		body["gpt_description"] = req.GptDescription
+	}
+	if req.Title != "" {
+		body["title"] = req.Title
+	}
+	if req.Tags != "" {
+		body["tags"] = req.Tags
+	}
+	if req.NegativeTags != "" {
+		body["negative_tags"] = req.NegativeTags
+	}
+	addRatioFields(req, body)
+}
+
+// buildInspoBody builds request for suno-inspo.
+// NOT supported: custom, instrumental, gpt_description, persona_id, duration_s
+// audio_urls is handled by the common layer (UsesAudioURLs=true).
+func buildInspoBody(req *dto.APIMartSunoRequest, body map[string]any) {
+	if req.Prompt != "" {
+		body["prompt"] = req.Prompt
+	}
+	if req.Title != "" {
+		body["title"] = req.Title
+	}
+	if req.Tags != "" {
+		body["tags"] = req.Tags
+	}
+	if req.NegativeTags != "" {
+		body["negative_tags"] = req.NegativeTags
+	}
+	if req.VocalGender != "" {
+		body["vocal_gender"] = req.VocalGender
+	}
+	if req.AutoLyrics != nil {
+		body["auto_lyrics"] = *req.AutoLyrics
+	}
+	addRatioFields(req, body)
+}
+
+// addOperationWeirdness sends "weirdness" for operation/editing tools (V6 preferred field).
+// weirdness_constraint is accepted as compat alias; if client sends Weirdness, prefer it.
+func addOperationWeirdness(req *dto.APIMartSunoRequest, body map[string]any) {
+	if req.Weirdness != nil {
+		body["weirdness"] = *req.Weirdness
+	} else if req.WeirdnessConstraint != nil {
+		// compat: client sent old name, forward as weirdness
+		body["weirdness"] = *req.WeirdnessConstraint
+		// remove weirdness_constraint if it was set by addRatioFields
+		delete(body, "weirdness_constraint")
 	}
 }
 
@@ -677,7 +898,6 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 // ── Polling ───────────────────────────────────────────────────────────────────
 
 // FetchTask issues GET /v1/music/tasks/:task_id to APIMart.
-// The body map contains "task_id" (upstream task ID) as set by updateVideoSingleTask.
 func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
 	upstreamTaskID, ok := body["task_id"].(string)
 	if !ok || upstreamTaskID == "" {

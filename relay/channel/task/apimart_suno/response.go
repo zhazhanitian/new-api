@@ -37,7 +37,8 @@ func ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
 		TaskID: resp.Data.ID,
 	}
 
-	// Map APIMart status to platform status
+	// Map APIMart status to platform status.
+	// V6 status values: pending | processing | completed | failed | unknown
 	switch resp.Data.Status {
 	case "submitted":
 		info.Status = string(model.TaskStatusSubmitted)
@@ -45,6 +46,12 @@ func ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
 	case "pending":
 		info.Status = string(model.TaskStatusQueued)
 		info.Progress = "50%"
+	case "processing":
+		// V6 新增：生成进行中
+		info.Status = string(model.TaskStatusInProgress)
+		if resp.Data.Progress > 0 {
+			info.Progress = fmt.Sprintf("%d%%", resp.Data.Progress)
+		}
 	case "completed":
 		info.Status = string(model.TaskStatusSuccess)
 		info.Progress = "100%"
@@ -61,8 +68,14 @@ func ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
 		if resp.Data.Error != nil {
 			info.Reason = resp.Data.Error.Message
 		}
+	case "unknown":
+		// V6 新增：状态未知，保留任务 ID 继续轮询，不要自动重建任务
+		info.Status = string(model.TaskStatusInProgress)
+		if resp.Data.Progress > 0 {
+			info.Progress = fmt.Sprintf("%d%%", resp.Data.Progress)
+		}
 	default:
-		// Unknown status: treat as in-progress to keep polling
+		// Fallback: treat as in-progress to keep polling
 		info.Status = string(model.TaskStatusInProgress)
 		if resp.Data.Progress > 0 {
 			info.Progress = fmt.Sprintf("%d%%", resp.Data.Progress)

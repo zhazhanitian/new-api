@@ -1,7 +1,7 @@
 package apimart_suno
 
-// allVersions lists every Suno model version supported by APIMart.
-var allVersions = []string{"v3.5", "v4", "v4.5", "v4.5+", "v4.5-all", "v5", "v5.5"}
+// allVersions lists every Suno V6 model version supported by APIMart.
+var allVersions = []string{"v6", "v6-wild", "v6-mini"}
 
 // ToolDef describes the upstream routing and validation rules for one APIMart Suno tool.
 type ToolDef struct {
@@ -25,16 +25,14 @@ type ToolDef struct {
 	UsesTaskIDs bool
 
 	// UsesAudioURLs marks tools that accept audio_urls[] instead of task_id.
-	// (Only suno-inspo.)
+	// (suno-inspo, suno-create-model)
 	UsesAudioURLs bool
 
 	// UsesAudioURL marks tools that accept a single audio_url instead of task_id.
-	// (Only suno-create-voice.)
+	// (suno-create-voice, suno-upload-cover, suno-upload-extend)
 	UsesAudioURL bool
 
 	// NoTaskID marks tools that do not reference a source task at all.
-	// (suno-music, suno-lyrics, suno-upload, suno-sounds, suno-upsample-tags,
-	//  suno-inspo, suno-create-voice)
 	NoTaskID bool
 }
 
@@ -43,12 +41,15 @@ var toolDefs = map[string]ToolDef{
 	"suno-music": {
 		Path:              "",
 		SupportedVersions: allVersions,
-		VersionRequired:   true,
-		NoTaskID:          true,
+		// VersionRequired 不再强制：允许仅传 custom_model_id（V6 文档：两者至少提供一个，互斥）
+		// 具体校验在 ValidateRequestAndSetAction 中处理
+		VersionRequired: false,
+		NoTaskID:        true,
 	},
 	"suno-lyrics": {
-		Path:     "lyrics",
-		NoTaskID: true,
+		Path:           "lyrics",
+		RequiredFields: []string{"prompt"},
+		NoTaskID:       true,
 	},
 	"suno-aligned-lyrics": {
 		Path:           "alignedLyrics",
@@ -80,14 +81,6 @@ var toolDefs = map[string]ToolDef{
 		RequiredFields: []string{"tags"},
 		NoTaskID:       true,
 	},
-	"suno-vox": {
-		Path:           "vox",
-		RequiredFields: []string{"task_id"},
-	},
-	"suno-wav": {
-		Path:           "wav",
-		RequiredFields: []string{"task_id"},
-	},
 	"suno-crop": {
 		Path:           "crop",
 		RequiredFields: []string{"task_id", "start_s", "end_s"},
@@ -106,7 +99,7 @@ var toolDefs = map[string]ToolDef{
 	},
 	"suno-sounds": {
 		Path:              "sounds",
-		SupportedVersions: []string{"v5", "v5.5"},
+		SupportedVersions: allVersions,
 		RequiredFields:    []string{"prompt"},
 		NoTaskID:          true,
 	},
@@ -122,17 +115,17 @@ var toolDefs = map[string]ToolDef{
 	},
 	"suno-add-instrumental": {
 		Path:              "addInstrumental",
-		SupportedVersions: []string{"v5", "v5.5"},
+		SupportedVersions: allVersions,
 		RequiredFields:    []string{"task_id"},
 	},
 	"suno-add-stem": {
 		Path:              "addStem",
-		SupportedVersions: []string{"v5.5"},
+		SupportedVersions: allVersions,
 		RequiredFields:    []string{"task_id"},
 	},
 	"suno-add-vocals": {
 		Path:              "addVocals",
-		SupportedVersions: []string{"v5", "v5.5"},
+		SupportedVersions: allVersions,
 		RequiredFields:    []string{"task_id"},
 	},
 	"suno-cover": {
@@ -156,13 +149,13 @@ var toolDefs = map[string]ToolDef{
 		RequiredFields: []string{"task_id"},
 	},
 	"suno-remaster": {
-		Path:              "remaster",
-		SupportedVersions: []string{"v4.5+", "v5", "v5.5"},
-		RequiredFields:    []string{"task_id"},
+		// V6: no version dimension
+		Path:           "remaster",
+		RequiredFields: []string{"task_id"},
 	},
 	"suno-replace-section": {
 		Path:              "replaceMusic",
-		SupportedVersions: []string{"v4", "v4.5+", "v5", "v5.5"},
+		SupportedVersions: allVersions,
 		RequiredFields:    []string{"task_id", "start_s", "end_s"},
 	},
 	"suno-sample": {
@@ -172,7 +165,7 @@ var toolDefs = map[string]ToolDef{
 	},
 	"suno-inspo": {
 		Path:              "inspo",
-		SupportedVersions: []string{"v4", "v4.5", "v4.5+", "v4.5-all", "v5", "v5.5"},
+		SupportedVersions: allVersions,
 		RequiredFields:    []string{"audio_urls"},
 		UsesAudioURLs:     true,
 		NoTaskID:          true,
@@ -184,6 +177,35 @@ var toolDefs = map[string]ToolDef{
 	"suno-stems-all": {
 		Path:           "stemsAll",
 		RequiredFields: []string{"task_id"},
+	},
+	// ── V6 新增工具 ─────────────────────────────────────────────────────────────
+	"suno-download": {
+		// 下载音频文件（替代已废弃的 wav 接口）
+		Path:           "download",
+		RequiredFields: []string{"task_id"},
+	},
+	"suno-upload-cover": {
+		// 上传公网音频 URL 并翻唱（无需先 uploadTask）
+		Path:              "uploadCover",
+		SupportedVersions: allVersions,
+		RequiredFields:    []string{"audio_url"},
+		UsesAudioURL:      true,
+		NoTaskID:          true,
+	},
+	"suno-upload-extend": {
+		// 上传公网音频 URL 并延伸（无需先 uploadTask）
+		Path:              "uploadExtend",
+		SupportedVersions: allVersions,
+		RequiredFields:    []string{"audio_url", "continue_at"},
+		UsesAudioURL:      true,
+		NoTaskID:          true,
+	},
+	"suno-create-model": {
+		// 创建自定义模型（6-24 条参考音频）
+		Path:          "createModel",
+		RequiredFields: []string{"name"},
+		UsesAudioURLs: true,
+		NoTaskID:      true,
 	},
 }
 

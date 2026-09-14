@@ -10,8 +10,6 @@ var ModelList = []string{
 	"suno-persona",
 	"suno-upload",
 	"suno-upsample-tags",
-	"suno-vox",
-	"suno-wav",
 	"suno-crop",
 	"suno-fade-in",
 	"suno-fade-out",
@@ -32,6 +30,11 @@ var ModelList = []string{
 	"suno-inspo",
 	"suno-stems",
 	"suno-stems-all",
+	// V6 新增
+	"suno-download",
+	"suno-upload-cover",
+	"suno-upload-extend",
+	"suno-create-model",
 }
 
 var ChannelName = "apimart-suno"
