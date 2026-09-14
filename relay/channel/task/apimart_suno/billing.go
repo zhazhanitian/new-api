@@ -7,12 +7,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// EstimateBilling applies a 2× multiplier when max_mode=true.
-// max_mode is supported by: suno-music, suno-extend, suno-cover, suno-sample,
-// suno-mashup, suno-add-instrumental, suno-add-stem, suno-add-vocals,
-// suno-replace-section, suno-inspo, suno-upload-cover, suno-upload-extend.
-// For all other tools the upstream charges a fixed per-request fee; no extra ratio needed.
-func EstimateBilling(c *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
+// maxModeModels 是价格清单中支持 Max 档（2 倍计费）的模型。
+// variety:"max" 不会触发本倍率；仅显式 max_mode=true 才翻倍。
+var maxModeModels = map[string]struct{}{
+	"suno-music":            {},
+	"suno-extend":           {},
+	"suno-cover":            {},
+	"suno-sample":           {},
+	"suno-mashup":           {},
+	"suno-add-instrumental": {},
+	"suno-add-stem":         {},
+	"suno-add-vocals":       {},
+	"suno-replace-section":  {},
+	"suno-inspo":            {},
+	"suno-upload-cover":     {},
+	"suno-upload-extend":    {},
+}
+
+// EstimateBilling applies a 2× multiplier when max_mode=true on a Max-capable model.
+// Other tools charge a fixed per-request fee; no extra OtherRatios are needed.
+func EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	if info == nil {
+		return nil
+	}
+	if _, ok := maxModeModels[info.OriginModelName]; !ok {
+		return nil
+	}
 	v, ok := c.Get("task_request")
 	if !ok {
 		return nil
