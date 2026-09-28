@@ -116,7 +116,6 @@ function formatConditionSummary(conditions, t) {
     .join(' && ');
 }
 
-
 function describeCondition(cond, t) {
   if (cond.source === SOURCE_TIME) {
     const fn = t(TIME_FUNC_LABELS[cond.timeFunc] || cond.timeFunc);
@@ -146,11 +145,76 @@ function isPerSecondBilling(exprStr) {
   return typeof exprStr === 'string' && exprStr.includes('param("duration")');
 }
 
+/** 腾讯 VOD 等：let u = tier(...); … u*d，fixedCost 是「元/秒」单价。
+ * 必须用表达式形态判断，不能靠档位名含 2K/4K——图像模型（如 expand-2k）也会用这些后缀。 */
+function isVideoUnitPriceBilling(exprStr, tiers) {
+  if (!tiers?.length) return false;
+  const hasTokenPrice = tiers.some(
+    (tier) =>
+      (tier.inputPrice || 0) > 0 ||
+      (tier.outputPrice || 0) > 0 ||
+      (tier.cachePrice || 0) > 0,
+  );
+  if (hasTokenPrice) return false;
+  if (!tiers.every((tier) => (tier.fixedCost || 0) > 0)) return false;
+  const expr = exprStr || '';
+  return /\blet\s+u\s*=/.test(expr) && /\bu\s*\*\s*d\b|\bd\s*\*\s*u\b/.test(expr);
+}
+
+function parseFixedDurationSeconds(exprStr) {
+  if (!exprStr) return null;
+  // let d = 8;
+  const fixed = exprStr.match(/let\s+d\s*=\s*(\d+)\s*;/);
+  if (fixed) return Number(fixed[1]);
+  // let d = d0 <= 0 ? 8 : ...
+  const def = exprStr.match(
+    /let\s+d\s*=\s*[^;]*\?\s*(\d+)\s*:/,
+  );
+  if (def) return Number(def[1]);
+  return null;
+}
+
+/** audio-4K / silent-720_1080P / ref-1080P → 可读档位 */
+function humanizeVideoTierLabel(label, t) {
+  const raw = String(label || '').trim();
+  if (!raw) return { title: t('默认'), detail: '' };
+
+  const kindMap = {
+    audio: t('有声'),
+    silent: t('无声'),
+    ref: t('有参考视频'),
+  };
+
+  const m = raw.match(/^(audio|silent|ref)[-_](.+)$/i);
+  if (m) {
+    const kind = kindMap[m[1].toLowerCase()] || m[1];
+    const res = m[2]
+      .replace(/_/g, '/')
+      .replace(/720\/1080P/i, '720P/1080P')
+      .replace(/1080p/gi, '1080P')
+      .replace(/720p/gi, '720P')
+      .replace(/540p/gi, '540P')
+      .replace(/480p/gi, '480P')
+      .replace(/\b2k\b/gi, '2K')
+      .replace(/\b4k\b/gi, '4K');
+    return { title: kind, detail: res };
+  }
+
+  if (/^(4K|2K|1080P|720P|540P|480P)$/i.test(raw)) {
+    return { title: raw.toUpperCase().replace('K', 'K'), detail: '' };
+  }
+
+  const parts = raw.split(/[-_]/).filter(Boolean);
+  if (parts.length >= 2) {
+    return { title: parts[0], detail: parts.slice(1).join(' / ') };
+  }
+  return { title: raw, detail: '' };
+}
+
 export default function DynamicPricingBreakdown({ billingExpr, t }) {
   const { symbol, rate } = getCurrencyConfig();
   const { billingExpr: baseExpr, requestRuleExpr: ruleExpr } =
     splitBillingExprAndRequestRules(billingExpr || '');
-  const perSecond = isPerSecondBilling(billingExpr);
 
   const tiers = parseTiersFromExpr(baseExpr);
   const ruleGroups = tryParseRequestRuleExpr(ruleExpr || '');
@@ -159,6 +223,12 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
   const hasTiers = tiers && tiers.length > 0;
   const hasRules = ruleGroups && ruleGroups.length > 0;
   const hasAddons = addonCosts && addonCosts.length > 0;
+  const videoUnitBilling = isVideoUnitPriceBilling(billingExpr, tiers);
+  const perSecond =
+    videoUnitBilling || isPerSecondBilling(billingExpr);
+  const fixedDuration = videoUnitBilling
+    ? parseFixedDurationSeconds(billingExpr)
+    : null;
 
   if (!hasTiers && !hasRules && !hasAddons) {
     return (
@@ -176,49 +246,111 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
     );
   }
 
-  const QUOTA_PER_USD = 500_000;
+  const QUOTA_PER_USD = 500000;
   // 和后端 QuotaRound 保持一致：先把表达式原始值换算成整数 quota，再转回货币
-  const quotaToPrice = (rawCost) => (Math.round((rawCost / 1_000_000) * QUOTA_PER_USD) / QUOTA_PER_USD) * rate;
+  const quotaToPrice = (rawCost) =>
+    (Math.round((rawCost / 1000000) * QUOTA_PER_USD) / QUOTA_PER_USD) * rate;
   const priceFields = BILLING_PRICING_VARS.map((v) => [v.field, v.shortLabel]);
   const hasFixedCost = hasTiers && tiers.some((tier) => tier.fixedCost > 0);
 
-  const tierColumns = [
-    {
-      title: t('档位'),
-      dataIndex: 'label',
-      render: (text, record) => (
-        <div>
-          <Tag color='blue' size='small'>{text || t('默认')}</Tag>
-          {record.condSummary && (
-            <div className='text-xs text-gray-500 mt-1'>{record.condSummary}</div>
-          )}
-        </div>
-      ),
-    },
-    ...priceFields
-      .filter(([field]) => hasTiers && tiers.some((tier) => tier[field] > 0))
-      .map(([field, label]) => ({
-        title: `${t(label)} (${symbol}/1M tokens)`,
-        dataIndex: field,
-        render: (v) => v > 0 ? <Text strong>{`${symbol}${(v * rate).toFixed(4)}`}</Text> : '-',
-      })),
-    ...(hasFixedCost ? [{
-      title: perSecond ? t('每秒费用') : t('单次费用'),
-      dataIndex: 'fixedCost',
-      render: (v) => v > 0
-        ? <Text strong>{`${symbol}${quotaToPrice(v).toFixed(6)}`}</Text>
-        : '-',
-    }] : []),
-  ];
+  const tierColumns = videoUnitBilling
+    ? [
+        {
+          title: t('档位'),
+          dataIndex: 'title',
+          render: (text, record) => (
+            <div>
+              <Tag color='blue' size='small'>
+                {text || t('默认')}
+              </Tag>
+              {record.detail ? (
+                <div className='text-xs text-gray-500 mt-1'>{record.detail}</div>
+              ) : null}
+            </div>
+          ),
+        },
+        {
+          title: `${t('单价')} (${symbol}/${t('秒')})`,
+          dataIndex: 'unitPrice',
+          align: 'right',
+          render: (v) =>
+            v > 0 ? (
+              <Text strong className='text-orange-600'>
+                {`${symbol}${v.toFixed(4)}`}
+              </Text>
+            ) : (
+              '-'
+            ),
+        },
+        ...(fixedDuration
+          ? [
+              {
+                title: `${t('参考总价')} (${fixedDuration}${t('秒')})`,
+                dataIndex: 'totalPrice',
+                align: 'right',
+                render: (v) =>
+                  v > 0 ? (
+                    <Text strong>{`${symbol}${v.toFixed(4)}`}</Text>
+                  ) : (
+                    '-'
+                  ),
+              },
+            ]
+          : []),
+      ]
+    : [
+        {
+          title: t('档位'),
+          dataIndex: 'label',
+          render: (text, record) => (
+            <div>
+              <Tag color='blue' size='small'>{text || t('默认')}</Tag>
+              {record.condSummary && (
+                <div className='text-xs text-gray-500 mt-1'>{record.condSummary}</div>
+              )}
+            </div>
+          ),
+        },
+        ...priceFields
+          .filter(([field]) => hasTiers && tiers.some((tier) => tier[field] > 0))
+          .map(([field, label]) => ({
+            title: `${t(label)} (${symbol}/1M tokens)`,
+            dataIndex: field,
+            render: (v) => v > 0 ? <Text strong>{`${symbol}${(v * rate).toFixed(4)}`}</Text> : '-',
+          })),
+        ...(hasFixedCost ? [{
+          title: perSecond ? t('每秒费用') : t('单次费用'),
+          dataIndex: 'fixedCost',
+          render: (v) => v > 0
+            ? <Text strong>{`${symbol}${quotaToPrice(v).toFixed(6)}`}</Text>
+            : '-',
+        }] : []),
+      ];
 
   const tierData = hasTiers
-    ? tiers.map((tier, i) => ({
-        key: `tier-${i}`,
-        label: tier.label,
-        condSummary: formatConditionSummary(tier.conditions, t),
-        fixedCost: tier.fixedCost || 0,
-        ...Object.fromEntries(priceFields.map(([field]) => [field, tier[field] || 0])),
-      }))
+    ? tiers.map((tier, i) => {
+        if (videoUnitBilling) {
+          const { title, detail } = humanizeVideoTierLabel(tier.label, t);
+          const unitPrice = quotaToPrice(tier.fixedCost || 0);
+          return {
+            key: `tier-${i}`,
+            title,
+            detail,
+            unitPrice,
+            totalPrice:
+              fixedDuration && unitPrice > 0
+                ? unitPrice * fixedDuration
+                : 0,
+          };
+        }
+        return {
+          key: `tier-${i}`,
+          label: tier.label,
+          condSummary: formatConditionSummary(tier.conditions, t),
+          fixedCost: tier.fixedCost || 0,
+          ...Object.fromEntries(priceFields.map(([field]) => [field, tier[field] || 0])),
+        };
+      })
     : [];
 
   return (
@@ -230,7 +362,11 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
         <div>
           <Text className='text-lg font-medium'>{t('动态计费')}</Text>
           <div className='text-xs text-gray-600'>
-            {t('价格根据用量档位和请求条件动态调整')}
+            {videoUnitBilling
+              ? fixedDuration
+                ? `${t('按秒计费：单价 × 时长；本模型默认按')} ${fixedDuration} ${t('秒预扣')}`
+                : t('按秒计费：实际费用 = 单价 × 视频秒数')
+              : t('价格根据用量档位和请求条件动态调整')}
           </div>
         </div>
       </div>
