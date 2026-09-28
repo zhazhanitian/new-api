@@ -34,27 +34,35 @@ import (
 // ============================
 
 type ContentItem struct {
-	Type     string    `json:"type,omitempty"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *MediaURL `json:"image_url,omitempty"`
-	VideoURL *MediaURL `json:"video_url,omitempty"`
-	AudioURL *MediaURL `json:"audio_url,omitempty"`
-	Role     string    `json:"role,omitempty"`
+	Type      string     `json:"type,omitempty"`
+	Text      string     `json:"text,omitempty"`
+	ImageURL  *MediaURL  `json:"image_url,omitempty"`
+	VideoURL  *MediaURL  `json:"video_url,omitempty"`
+	AudioURL  *MediaURL  `json:"audio_url,omitempty"`
+	DraftTask *DraftTask `json:"draft_task,omitempty"` // Seedance 2.5：样片任务 → 正式视频
+	Role      string     `json:"role,omitempty"`
 }
 
 type MediaURL struct {
 	URL string `json:"url,omitempty"`
 }
 
+// DraftTask 样片任务引用（仅 Seedance 2.5）。
+type DraftTask struct {
+	ID string `json:"id,omitempty"`
+}
+
 type requestPayload struct {
-	Model                 string         `json:"model"`
-	Content               []ContentItem  `json:"content,omitempty"`
-	CallbackURL           string         `json:"callback_url,omitempty"`
-	ReturnLastFrame       *dto.BoolValue `json:"return_last_frame,omitempty"`
-	ServiceTier           string         `json:"service_tier,omitempty"`
-	ExecutionExpiresAfter *dto.IntValue  `json:"execution_expires_after,omitempty"`
-	GenerateAudio         *dto.BoolValue `json:"generate_audio,omitempty"`
-	Draft                 *dto.BoolValue `json:"draft,omitempty"`
+	Model                  string         `json:"model"`
+	Content                []ContentItem  `json:"content,omitempty"`
+	CallbackURL            string         `json:"callback_url,omitempty"`
+	ReturnLastFrame        *dto.BoolValue `json:"return_last_frame,omitempty"`
+	ServiceTier            string         `json:"service_tier,omitempty"`
+	ExecutionExpiresAfter  *dto.IntValue  `json:"execution_expires_after,omitempty"`
+	GenerateAudio          *dto.BoolValue `json:"generate_audio,omitempty"`
+	Draft                 *dto.BoolValue `json:"draft,omitempty"`                   // Seedance 2.5：样片模式
+	OmniReferenceTaskType string         `json:"omni_reference_task_type,omitempty"` // Seedance 2.5：auto/reference/edit/extend
+	OutputFormat          string         `json:"output_format,omitempty"`            // Seedance 2.5：mp4/mov
 	Tools                 []struct {
 		Type string `json:"type,omitempty"`
 	} `json:"tools,omitempty"`
@@ -125,6 +133,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		// 3D 任务：请求已由 relay_task.go 的前置处理解析到 context，直接校验
 		return validate3DRequest(c, info)
 	}
+	// Seedance：prompt 必填（提示词优选外层 prompt）
 	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
 }
 
@@ -389,11 +398,30 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		r.Frames = nil
 	}
 
-	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
-	r.Content = append(r.Content, ContentItem{
-		Type: "text",
-		Text: req.Prompt,
-	})
+	// seed：外层字段覆盖 metadata（与 size / duration 一致）
+	if req.Seed != nil {
+		r.Seed = lo.ToPtr(dto.IntValue(*req.Seed))
+	}
+
+	// 文本处理（prompt 必填）：
+	// 与 content 中已有 text 做比对（忽略首尾空白）；已存在则不重复追加，否则追加一条。
+	// 推荐只传外层 prompt，保持一条提示词；content 中的其他 text 会被保留一并提交。
+	prompt := strings.TrimSpace(req.Prompt)
+	if prompt != "" {
+		already := false
+		for _, item := range r.Content {
+			if item.Type == "text" && strings.TrimSpace(item.Text) == prompt {
+				already = true
+				break
+			}
+		}
+		if !already {
+			r.Content = append(r.Content, ContentItem{
+				Type: "text",
+				Text: prompt,
+			})
+		}
+	}
 
 	return &r, nil
 }

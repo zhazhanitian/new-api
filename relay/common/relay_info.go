@@ -712,6 +712,7 @@ type TaskSubmitReq struct {
 	OutputCompression int                    `json:"output_compression,omitempty"`
 	Duration          int                    `json:"duration,omitempty"`
 	Seconds           string                 `json:"seconds,omitempty"`
+	Seed              *int                   `json:"seed,omitempty"`
 	// InputReference 已废弃，视频任务请统一使用 Images[0]。
 	// 兼容层：如果传入会自动转为 Images[0]。
 	InputReference    string                 `json:"input_reference,omitempty"`

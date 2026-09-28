@@ -36,6 +36,7 @@ import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
 import {
   formatPrice,
+  formatPriceTiers,
   formatRequestPrice,
   stripTrailingZeros,
 } from '../lib/price'
@@ -219,6 +220,31 @@ export function usePricingColumns(
         const isTokenBased = isTokenBasedModel(model)
 
         if (isTokenBased) {
+          const priceTiers = formatPriceTiers(
+            model,
+            tokenUnit,
+            showRechargePrice,
+            priceRate,
+            usdExchangeRate
+          )
+          if (priceTiers.length > 0) {
+            return (
+              <div className='min-w-[180px] space-y-0.5'>
+                {priceTiers.map((tier) => (
+                  <div key={tier.label} className='text-xs'>
+                    <span className='text-muted-foreground'>{tier.label}</span>{' '}
+                    <span className='font-mono tabular-nums'>
+                      {stripTrailingZeros(tier.formatted)}
+                    </span>
+                  </div>
+                ))}
+                <div className='text-muted-foreground/50 text-[10px]'>
+                  / {tokenUnitLabel} tokens
+                </div>
+              </div>
+            )
+          }
+
           const inputPrice = stripTrailingZeros(
             formatPrice(
               model,

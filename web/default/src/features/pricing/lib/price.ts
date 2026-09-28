@@ -158,6 +158,57 @@ function applyRechargeRate(
 }
 
 /**
+ * Format Seedance-style display tiers (relative to base input price).
+ * Returns [] when the model has no price_tiers.
+ */
+export function formatPriceTiers(
+  model: PricingModel,
+  tokenUnit: TokenUnit,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  group?: string,
+  groupRatioMap?: Record<string, number>
+): Array<{ label: string; formatted: string }> {
+  const tiers = Array.isArray(model.price_tiers) ? model.price_tiers : []
+  if (tiers.length === 0 || model.quota_type === QUOTA_TYPE_VALUES.REQUEST) {
+    return []
+  }
+
+  const enableGroups = Array.isArray(model.enable_groups)
+    ? model.enable_groups
+    : []
+  const groupRatio = groupRatioMap || model.group_ratio || {}
+  const ratio =
+    group && groupRatio[group] !== undefined
+      ? groupRatio[group]
+      : getMinGroupRatio(enableGroups, groupRatio)
+
+  const baseUSD = model.model_ratio * 2 * ratio
+
+  return tiers
+    .filter((tier) => tier && Number.isFinite(Number(tier.ratio)))
+    .map((tier) => {
+      let priceInUSD = baseUSD * Number(tier.ratio)
+      priceInUSD = applyRechargeRate(
+        priceInUSD,
+        showWithRecharge,
+        priceRate,
+        usdExchangeRate
+      )
+      const price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
+      return {
+        label: tier.label,
+        formatted: formatCurrencyFromUSD(price, {
+          digitsLarge: 4,
+          digitsSmall: 6,
+          abbreviate: false,
+        }),
+      }
+    })
+}
+
+/**
  * Format token-based price for display
  */
 export function formatPrice(

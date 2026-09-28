@@ -15,6 +15,12 @@ import (
 	"github.com/QuantumNous/new-api/types"
 )
 
+// PriceTier 模型广场展示用分档价（相对基准输入价的倍率），不参与结算逻辑。
+type PriceTier struct {
+	Label string  `json:"label"`
+	Ratio float64 `json:"ratio"`
+}
+
 type Pricing struct {
 	ModelName              string                  `json:"model_name"`
 	Description            string                  `json:"description,omitempty"`
@@ -36,6 +42,7 @@ type Pricing struct {
 	BillingMode            string                  `json:"billing_mode,omitempty"`
 	BillingExpr            string                  `json:"billing_expr,omitempty"`
 	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	PriceTiers             []PriceTier             `json:"price_tiers,omitempty"`
 }
 
 type PricingVendor struct {

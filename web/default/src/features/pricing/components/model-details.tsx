@@ -61,7 +61,11 @@ import {
 import { parseTags } from '../lib/filters'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
 import { inferModelMetadata } from '../lib/model-metadata'
-import { formatFixedPrice, formatGroupPrice } from '../lib/price'
+import {
+  formatFixedPrice,
+  formatGroupPrice,
+  formatPriceTiers,
+} from '../lib/price'
 import type {
   Modality,
   ModelCapability,
@@ -517,6 +521,41 @@ function PriceSection(props: {
     </>
   )
 
+  const priceTiers = formatPriceTiers(
+    props.model,
+    props.tokenUnit,
+    props.showRechargePrice,
+    props.priceRate,
+    props.usdExchangeRate,
+    baseGroupKey,
+    baseGroupRatioMap
+  )
+  if (priceTiers.length > 0) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <div className='bg-muted/20 space-y-1.5 rounded-lg border px-3 py-2.5'>
+          {priceTiers.map((tier) => (
+            <div
+              key={tier.label}
+              className='flex items-baseline justify-between gap-4'
+            >
+              <span className='text-muted-foreground/70 text-sm'>
+                {tier.label}
+              </span>
+              <span className='text-foreground font-mono text-sm font-semibold tabular-nums'>
+                {tier.formatted}
+                <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                  / {tokenUnitLabel}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section>
       <SectionTitle>{t('Base Price')}</SectionTitle>
@@ -762,6 +801,72 @@ function GroupPricingSection(props: {
             {t('Prices shown per')} {tokenUnitLabel} tokens
           </p>
         </div>
+      </section>
+    )
+  }
+
+  const seedanceTiers = Array.isArray(props.model.price_tiers)
+    ? props.model.price_tiers
+    : []
+
+  if (isTokenBased && seedanceTiers.length > 0) {
+    return (
+      <section>
+        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
+        <div className='-mx-4 overflow-x-auto sm:mx-0'>
+          <Table className='text-sm'>
+            <TableHeader>
+              <TableRow className='hover:bg-transparent'>
+                <TableHead className={thClass}>{t('Group')}</TableHead>
+                <TableHead className={thClass}>{t('Ratio')}</TableHead>
+                {seedanceTiers.map((tier) => (
+                  <TableHead
+                    key={tier.label}
+                    className={`${thClass} text-right`}
+                  >
+                    {tier.label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {availableGroups.map((group) => {
+                const ratio = props.groupRatio[group] || 1
+                const tiers = formatPriceTiers(
+                  props.model,
+                  props.tokenUnit,
+                  showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate,
+                  group,
+                  props.groupRatio
+                )
+                return (
+                  <TableRow key={group}>
+                    <TableCell className='py-2.5'>
+                      <GroupBadge group={group} size='sm' />
+                    </TableCell>
+                    <TableCell className='text-muted-foreground py-2.5 font-mono text-xs'>
+                      {ratio}x
+                    </TableCell>
+                    {tiers.map((tier) => (
+                      <TableCell
+                        key={tier.label}
+                        className='py-2.5 text-right font-mono'
+                      >
+                        {tier.formatted}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
+          {t('Prices shown per')} {tokenUnitLabel} tokens
+        </p>
       </section>
     )
   }

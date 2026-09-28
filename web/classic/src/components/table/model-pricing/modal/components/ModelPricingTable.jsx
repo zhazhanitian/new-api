@@ -73,11 +73,14 @@ const ModelPricingTable = ({
         billingType:
           modelData?.billing_mode === 'tiered_expr'
             ? t('动态计费')
-            : modelData?.quota_type === 0
-              ? t('按量计费')
-              : modelData?.quota_type === 1
-                ? t('按次计费')
-                : '-',
+            : Array.isArray(modelData?.price_tiers) &&
+                modelData.price_tiers.length > 0
+              ? t('分档计费')
+              : modelData?.quota_type === 0
+                ? t('按量计费')
+                : modelData?.quota_type === 1
+                  ? t('按次计费')
+                  : '-',
         priceItems: getModelPriceItems(priceData, t, siteDisplayType),
       };
     });
@@ -97,9 +100,11 @@ const ModelPricingTable = ({
     ];
 
     const isDynamic = modelData?.billing_mode === 'tiered_expr';
+    const hasPriceTiers =
+      Array.isArray(modelData?.price_tiers) && modelData.price_tiers.length > 0;
 
-    // 动态计费时始终显示倍率列，否则根据设置
-    if (showRatio || isDynamic) {
+    // 动态计费 / 分档展示时始终显示倍率列，否则根据设置
+    if (showRatio || isDynamic || hasPriceTiers) {
       columns.push({
         title: t('分组倍率'),
         dataIndex: 'ratio',
@@ -119,6 +124,7 @@ const ModelPricingTable = ({
         if (text === t('按量计费')) color = 'violet';
         else if (text === t('按次计费')) color = 'teal';
         else if (text === t('动态计费')) color = 'amber';
+        else if (text === t('分档计费')) color = 'amber';
         return (
           <Tag color={color} size='small' shape='circle'>
             {text || '-'}
@@ -135,6 +141,13 @@ const ModelPricingTable = ({
           return (
             <Text type='tertiary' size='small'>
               {t('见上方动态计费详情')}
+            </Text>
+          );
+        }
+        if (hasPriceTiers) {
+          return (
+            <Text type='tertiary' size='small'>
+              {t('见上方分档价格表')}
             </Text>
           );
         }

@@ -1,5 +1,7 @@
 package doubao
 
+import "strings"
+
 var ModelList = []string{
 	// ── Video generation (async, seedance) ──────────────────────────────
 	"doubao-seedance-1-0-pro-250528",
@@ -9,6 +11,7 @@ var ModelList = []string{
 	"doubao-seedance-2-0-260128",
 	"doubao-seedance-2-0-fast-260128",
 	"doubao-seedance-2-0-mini-260615",
+	"doubao-seedance-2-5-260628",
 	// BytePlus (international) equivalents
 	"dreamina-seedance-2-0-260128",
 	"dreamina-seedance-2-0-fast-260128",
@@ -36,6 +39,7 @@ var videoInputRatioMap = map[string]float64{
 	"doubao-seedance-2-0-260128":          28.0 / 46.0, // ~0.6087
 	"doubao-seedance-2-0-fast-260128":     22.0 / 37.0, // ~0.5946
 	"doubao-seedance-2-0-mini-260615":     14.0 / 23.0, // ~0.6087
+	"doubao-seedance-2-5-260628":          42.0 / 70.0, // 0.6；480P/720P 同价，含视频/不含视频
 	"dreamina-seedance-2-0-260128":        28.0 / 46.0, // ~0.6087 (BytePlus)
 	"dreamina-seedance-2-0-fast-260128":   22.0 / 37.0, // ~0.5946 (BytePlus)
 }
@@ -51,6 +55,7 @@ func GetVideoInputRatio(modelName string) (float64, bool) {
 var resolutionRatioMap = map[string]float64{
 	"doubao-seedance-2-0-260128:1080p":   31.0 / 28.0, // ≈1.10714，1080P溢价（含视频1080P/含视频480P）
 	"doubao-seedance-2-0-260128:4K":      26.0 / 46.0, // ≈0.5652，4K折扣（不含视频4K/不含视频480P）
+	"doubao-seedance-2-5-260628:1080p":   46.0 / 42.0, // ≈1.09524，1080P溢价（含视频1080P/含视频480P·720P）；无 4K
 	"dreamina-seedance-2-0-260128:1080p": 31.0 / 28.0, // ≈1.10714 (BytePlus 同款模型)
 	"dreamina-seedance-2-0-260128:4K":    26.0 / 46.0, // ≈0.5652 (BytePlus 同款模型)
 }
@@ -72,4 +77,81 @@ var silentVideoRatioMap = map[string]float64{
 func GetSilentVideoRatio(modelName string) (float64, bool) {
 	r, ok := silentVideoRatioMap[modelName]
 	return r, ok
+}
+
+// PriceDisplayTier 模型广场展示用分档（相对「后台配置的基准输入价」的倍率）。
+// 实际结算仍走 EstimateBilling 的 OtherRatios，此处仅供 /api/pricing 展示。
+type PriceDisplayTier struct {
+	Label string  `json:"label"`
+	Ratio float64 `json:"ratio"` // 乘以基准输入价得到该档展示价
+}
+
+// 广场短名 → 计费系数表中的正式模型 ID（仅影响展示分档；结算仍要求请求使用正式 ID）
+var priceDisplayModelAliases = map[string]string{
+	"doubao-seedance-2.5": "doubao-seedance-2-5-260628",
+	"doubao-seedance-2-5": "doubao-seedance-2-5-260628",
+	"doubao-seedance-2.0": "doubao-seedance-2-0-260128",
+	"doubao-seedance-2-0": "doubao-seedance-2-0-260128",
+}
+
+func resolvePriceDisplayModelName(modelName string) string {
+	if modelName == "" {
+		return ""
+	}
+	if _, ok := videoInputRatioMap[modelName]; ok {
+		return modelName
+	}
+	if _, ok := silentVideoRatioMap[modelName]; ok {
+		return modelName
+	}
+	if alias, ok := priceDisplayModelAliases[modelName]; ok {
+		return alias
+	}
+	normalized := strings.ReplaceAll(modelName, ".", "-")
+	if alias, ok := priceDisplayModelAliases[normalized]; ok {
+		return alias
+	}
+	if _, ok := videoInputRatioMap[normalized]; ok {
+		return normalized
+	}
+	return ""
+}
+
+// GetPriceDisplayTiers 返回 Seedance 类模型的分档展示表；非此类模型返回 nil。
+func GetPriceDisplayTiers(modelName string) []PriceDisplayTier {
+	resolved := resolvePriceDisplayModelName(modelName)
+	if resolved == "" {
+		return nil
+	}
+
+	if silent, ok := silentVideoRatioMap[resolved]; ok {
+		return []PriceDisplayTier{
+			{Label: "有声", Ratio: 1},
+			{Label: "无声", Ratio: silent},
+		}
+	}
+
+	videoRatio, hasVideo := videoInputRatioMap[resolved]
+	if !hasVideo {
+		return nil
+	}
+
+	tiers := []PriceDisplayTier{
+		{Label: "不含视频 · 480P/720P", Ratio: 1},
+		{Label: "含视频输入 · 480P/720P", Ratio: videoRatio},
+	}
+
+	if r1080, ok := resolutionRatioMap[resolved+":1080p"]; ok {
+		tiers = append(tiers,
+			PriceDisplayTier{Label: "不含视频 · 1080P", Ratio: r1080},
+			PriceDisplayTier{Label: "含视频输入 · 1080P", Ratio: videoRatio * r1080},
+		)
+	}
+	if r4k, ok := resolutionRatioMap[resolved+":4K"]; ok {
+		tiers = append(tiers,
+			PriceDisplayTier{Label: "不含视频 · 4K", Ratio: r4k},
+			PriceDisplayTier{Label: "含视频输入 · 4K", Ratio: videoRatio * r4k},
+		)
+	}
+	return tiers
 }

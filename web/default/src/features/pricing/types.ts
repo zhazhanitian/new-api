@@ -27,6 +27,12 @@ export type PricingVendor = {
   description?: string
 }
 
+export type PriceTier = {
+  label: string
+  /** Multiplier against the configured base input price */
+  ratio: number
+}
+
 export type PricingModel = {
   id: number
   model_name: string
@@ -55,6 +61,8 @@ export type PricingModel = {
   billing_expr?: string
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
+  /** Seedance-style display tiers (relative to base input price) */
+  price_tiers?: PriceTier[]
   /**
    * Optional model metadata fields. These are not yet returned by the backend
    * and are populated client-side from {@link inferModelMetadata}.

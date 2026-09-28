@@ -3,11 +3,26 @@ package controller
 import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
+
+func attachSeedancePriceTiers(pricing []model.Pricing) {
+	for i := range pricing {
+		tiers := doubao.GetPriceDisplayTiers(pricing[i].ModelName)
+		if len(tiers) == 0 {
+			continue
+		}
+		out := make([]model.PriceTier, 0, len(tiers))
+		for _, t := range tiers {
+			out = append(out, model.PriceTier{Label: t.Label, Ratio: t.Ratio})
+		}
+		pricing[i].PriceTiers = out
+	}
+}
 
 func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
 	if len(pricing) == 0 {
@@ -57,6 +72,7 @@ func GetPricing(c *gin.Context) {
 
 	usableGroup = service.GetUserUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	attachSeedancePriceTiers(pricing)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {

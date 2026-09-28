@@ -716,6 +716,16 @@ export const calculateModelPrice = ({
       ? formatTokenPrice(inputRatioPriceUSD * Number(record.audio_ratio))
       : null;
 
+    // Seedance 等视频模型：后端下发相对基准价的分档，用于广场展示（结算仍走 OtherRatios）
+    const rawTiers = Array.isArray(record.price_tiers) ? record.price_tiers : [];
+    const priceTiers = rawTiers
+      .filter((tier) => tier && hasRatioValue(tier.ratio))
+      .map((tier, idx) => ({
+        key: `tier-${idx}`,
+        label: tier.label || `Tier ${idx + 1}`,
+        value: formatTokenPrice(inputRatioPriceUSD * Number(tier.ratio)),
+      }));
+
     return {
       inputPrice,
       completionPrice: formatTokenPrice(
@@ -739,6 +749,7 @@ export const calculateModelPrice = ({
                 Number(record.audio_completion_ratio),
             )
           : null,
+      priceTiers,
       unitLabel,
       isPerToken: true,
       isTokensDisplay: false,
@@ -841,6 +852,33 @@ export const getModelPriceItems = (
     }
 
     const unitSuffix = ` / 1${priceData.unitLabel} Tokens`;
+    if (Array.isArray(priceData.priceTiers) && priceData.priceTiers.length > 0) {
+      // 列表/卡片用摘要（详情页另有分档价格表）；避免多档挤成一坨
+      const nums = priceData.priceTiers
+        .map((tier) => parseFloat(String(tier.value).replace(/[^0-9.]/g, '')))
+        .filter((n) => Number.isFinite(n));
+      const symbolMatch = String(priceData.priceTiers[0]?.value || '').match(
+        /^[^\d-]*/,
+      );
+      const symbol = symbolMatch ? symbolMatch[0] : '';
+      const min = nums.length ? Math.min(...nums) : null;
+      const max = nums.length ? Math.max(...nums) : null;
+      const range =
+        min !== null && max !== null
+          ? min === max
+            ? `${symbol}${min.toFixed(4)}`
+            : `${symbol}${min.toFixed(4)} ~ ${symbol}${max.toFixed(4)}`
+          : priceData.priceTiers[0].value;
+      return [
+        {
+          key: 'tier-summary',
+          label: t('分档'),
+          value: range,
+          suffix: `${unitSuffix} · ${priceData.priceTiers.length}${t('档')}`,
+          isPriceTiers: true,
+        },
+      ];
+    }
     return [
       {
         key: 'input',

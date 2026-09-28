@@ -27,6 +27,7 @@ import ModelBasicInfo from './components/ModelBasicInfo';
 import ModelEndpoints from './components/ModelEndpoints';
 import ModelPricingTable from './components/ModelPricingTable';
 import DynamicPricingBreakdown from './components/DynamicPricingBreakdown';
+import SeedancePriceTiersBreakdown from './components/SeedancePriceTiersBreakdown';
 
 const { Text } = Typography;
 
@@ -101,6 +102,24 @@ const ModelDetailSideSheet = ({
                 <div style={{ padding: '0 24px' }}>
                   <DynamicPricingBreakdown
                     billingExpr={modelData.billing_expr}
+                    t={t}
+                  />
+                </div>
+              </>
+            )}
+            {Array.isArray(modelData.price_tiers) &&
+              modelData.price_tiers.length > 0 &&
+              modelData.billing_mode !== 'tiered_expr' && (
+              <>
+                <Divider margin={16} />
+                <div style={{ padding: '0 24px' }}>
+                  <SeedancePriceTiersBreakdown
+                    modelData={modelData}
+                    groupRatio={groupRatio}
+                    currency={currency}
+                    siteDisplayType={siteDisplayType}
+                    tokenUnit={tokenUnit}
+                    displayPrice={displayPrice}
                     t={t}
                   />
                 </div>
