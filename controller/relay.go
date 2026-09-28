@@ -175,6 +175,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				relayInfo.Billing.Refund(c)
 			}
 			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
+
+			// 所有重试耗尽后，为同步生图写 FAILURE 任务记录（使失败请求在任务日志中可见）
+			if relayInfo.RelayMode == relayconstant.RelayModeImagesGenerations ||
+				relayInfo.RelayMode == relayconstant.RelayModeImagesEdits {
+				service.RecordSyncImageTask(c, relayInfo, newAPIError)
+			}
 		}
 	}()
 
