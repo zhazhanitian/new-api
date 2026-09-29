@@ -72,6 +72,10 @@ export const useTaskLogsData = () => {
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
 
+  // 图像预览（Semi ImagePreview：全屏、缩放、旋转）
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
+
   // Audio preview modal state
   const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
   const [audioClips, setAudioClips] = useState([]);
@@ -281,6 +285,11 @@ export const useTaskLogsData = () => {
     setIsVideoModalOpen(true);
   };
 
+  const openImagePreview = (url) => {
+    setImageUrl(url);
+    setIsImagePreviewOpen(true);
+  };
+
   const openAudioModal = (clips) => {
     setAudioClips(clips);
     setIsAudioModalOpen(true);
@@ -328,6 +337,10 @@ export const useTaskLogsData = () => {
     setIsVideoModalOpen,
     videoUrl,
 
+    isImagePreviewOpen,
+    setIsImagePreviewOpen,
+    imageUrl,
+
     // Audio preview modal
     isAudioModalOpen,
     setIsAudioModalOpen,
@@ -366,6 +379,7 @@ export const useTaskLogsData = () => {
     copyText,
     openContentModal,
     openVideoModal,
+    openImagePreview,
     openAudioModal,
     enrichLogs,
     syncPageData,

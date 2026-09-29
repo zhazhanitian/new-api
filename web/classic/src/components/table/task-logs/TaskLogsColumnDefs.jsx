@@ -248,6 +248,7 @@ export const getTaskLogsColumns = ({
   openContentModal,
   isAdminUser,
   openVideoModal,
+  openImagePreview,
   openAudioModal,
 }) => {
   return [
@@ -429,7 +430,13 @@ export const getTaskLogsColumns = ({
         const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
         if (isSuccess && isImageTask && hasResultUrl) {
           return (
-            <a href={resultUrl} target='_blank' rel='noopener noreferrer'>
+            <a
+              href='#'
+              onClick={(e) => {
+                e.preventDefault();
+                openImagePreview(resultUrl);
+              }}
+            >
               {t('点击预览图像')}
             </a>
           );
