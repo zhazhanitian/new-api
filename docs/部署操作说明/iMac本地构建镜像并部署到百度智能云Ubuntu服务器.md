@@ -84,6 +84,8 @@ new-api-new-api   latest          ...
 new-api           20260731-1130   ...
 ```
 
+
+
 ## 四、本地导出并压缩镜像
 
 为了减少上传时间，建议直接导出成 `tar.gz`：
@@ -108,6 +110,8 @@ docker images | grep new-api
 docker save new-api-new-api:latest new-api:20260731-1130 | gzip > new-api-image.tar.gz
 ```
 
+
+
 ## 五、上传镜像到百度智能云 Ubuntu 服务器
 
 把 `生产服务器IP` 替换为真实 IP：
@@ -121,6 +125,8 @@ scp ./new-api-image.tar.gz root@生产服务器IP:/www/wwwroot/newapi/new-api-ma
 ```bash
 scp -P 2222 ./new-api-image.tar.gz root@生产服务器IP:/www/wwwroot/newapi/new-api-main/
 ```
+
+
 
 ## 六、确认生产服务器 docker-compose.yml
 
@@ -191,6 +197,8 @@ curl http://127.0.0.1:9006/api/status
 docker compose logs -f new-api
 ```
 
+
+
 ## 九、下次更新流程
 
 以后每次发布只需要重复下面几步。
@@ -222,13 +230,16 @@ ssh root@生产服务器IP
 cd /www/wwwroot/newapi/new-api-main
 
 docker load -i new-api-image.tar.gz
-docker compose down
-docker compose up -d
+docker compose down && docker compose up -d
 docker compose ps
 curl http://127.0.0.1:9006/api/status
 ```
 
+
+
 ## 十、常见问题
+
+
 
 ### 1. iMac 构建很慢
 
@@ -241,6 +252,8 @@ M 系列 iMac 构建 `linux/amd64` 镜像时会走跨架构构建，比原生 `a
 ```bash
 --platform linux/amd64
 ```
+
+
 
 ### 3. docker compose 还是在服务器上构建
 
@@ -255,6 +268,8 @@ build:
 ```yaml
 image: new-api-new-api:latest
 ```
+
+
 
 ### 4. 想节省服务器磁盘
 
@@ -285,7 +300,7 @@ docker rmi new-api:20260805-1214
 
 注意：如果多个 tag 指向同一个镜像 ID（`docker images` 里 IMAGE ID 列相同），删除其中一个 tag 不会删除镜像本身，只有最后一个 tag 被删除时镜像才会真正释放磁盘。
 
-**批量删除所有旧的日期 tag（保留 `new-api-new-api:latest` 和最新的日期 tag）：**
+**批量删除所有旧的日期 tag（保留** `new-api-new-api:latest` **和最新的日期 tag）：**
 
 先确认当前最新的日期 tag：
 
