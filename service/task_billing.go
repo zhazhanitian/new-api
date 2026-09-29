@@ -161,7 +161,10 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 		return
 	}
 
-	// 2. 退还令牌额度
+	// 2. 回滚 used_quota：预扣时已累加，退款时需同步减回。不改 request_count，预扣时已计过一次调用
+	model.UpdateUserUsedQuota(task.UserId, -quota)
+
+	// 3. 退还令牌额度
 	taskAdjustTokenQuota(ctx, task, -quota)
 
 	// 3. 记录日志
@@ -226,6 +229,8 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	} else {
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
+		// 回滚 used_quota：差额退还时需同步减少，否则「总额度 = 剩余 + 已用」会虚增。不改调用次数。
+		model.UpdateUserUsedQuota(task.UserId, quotaDelta)
 	}
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID

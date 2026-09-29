@@ -180,6 +180,9 @@ func UpdateMidjourneyTaskBulk() {
 					err = model.IncreaseUserQuota(task.UserId, task.Quota, false)
 					if err != nil {
 						logger.LogError(ctx, "fail to increase user quota: "+err.Error())
+					} else {
+						// 回滚 used_quota：预扣时已累加，退款时需同步减回。不改调用次数。
+						model.UpdateUserUsedQuota(task.UserId, -task.Quota)
 					}
 					model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 						UserId:    task.UserId,
