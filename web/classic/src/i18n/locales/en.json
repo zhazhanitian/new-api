@@ -1405,6 +1405,8 @@
     "已有账户？": "Already have an account?",
     "已服务": "Served",
     "已注销": "Logged out",
+    "未注销": "Not cancelled",
+    "未注销": "Not cancelled",
     "已添加": "Added",
     "已添加 {{count}} 个模板_one": "Added {{count}} template",
     "已添加 {{count}} 个模板_other": "Added {{count}} templates",

@@ -61,6 +61,25 @@ const UsersFilters = ({
       className='w-full md:w-auto order-1 md:order-2'
     >
       <div className='flex flex-col md:flex-row items-center gap-2 w-full md:w-auto'>
+        <div className='w-full md:w-36'>
+          <Form.Select
+            field='searchStatus'
+            placeholder={t('选择状态')}
+            optionList={[
+              { label: t('未注销'), value: 'active' },
+              { label: t('已启用'), value: 'enabled' },
+              { label: t('已禁用'), value: 'disabled' },
+              { label: t('已注销'), value: 'deleted' },
+            ]}
+            onChange={(value) => {
+              searchUsers(1, pageSize, null, null, value || '');
+            }}
+            className='w-full'
+            showClear
+            pure
+            size='small'
+          />
+        </div>
         <div className='relative w-full md:w-64'>
           <Form.Input
             field='searchKeyword'

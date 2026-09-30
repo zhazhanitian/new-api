@@ -20,8 +20,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
-import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+
+const USERS_PAGE_SIZE = 20;
 
 export const useUsersData = () => {
   const { t } = useTranslation();
@@ -31,7 +32,7 @@ export const useUsersData = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activePage, setActivePage] = useState(1);
-  const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
+  const [pageSize, setPageSize] = useState(USERS_PAGE_SIZE);
   const [searching, setSearching] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [userCount, setUserCount] = useState(0);
@@ -47,6 +48,7 @@ export const useUsersData = () => {
   const formInitValues = {
     searchKeyword: '',
     searchGroup: '',
+    searchStatus: '',
   };
 
   // Form API reference
@@ -58,8 +60,14 @@ export const useUsersData = () => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchGroup: formValues.searchGroup || '',
+      searchStatus: formValues.searchStatus || '',
     };
   };
+
+  const hasSearchFilters = (filters) =>
+    filters.searchKeyword !== '' ||
+    filters.searchGroup !== '' ||
+    filters.searchStatus !== '';
 
   // Set user format with key field
   const setUserFormat = (users) => {
@@ -85,28 +93,31 @@ export const useUsersData = () => {
     setLoading(false);
   };
 
-  // Search users with keyword and group
+  // Search users with keyword, group and status
   const searchUsers = async (
     startIdx,
     pageSize,
     searchKeyword = null,
     searchGroup = null,
+    searchStatus = null,
   ) => {
-    // If no parameters passed, get values from form
-    if (searchKeyword === null || searchGroup === null) {
+    // Missing arguments are read from the form; provided ones stay as passed.
+    if (searchKeyword === null || searchGroup === null || searchStatus === null) {
       const formValues = getFormValues();
-      searchKeyword = formValues.searchKeyword;
-      searchGroup = formValues.searchGroup;
+      if (searchKeyword === null) searchKeyword = formValues.searchKeyword;
+      if (searchGroup === null) searchGroup = formValues.searchGroup;
+      if (searchStatus === null) searchStatus = formValues.searchStatus;
     }
 
-    if (searchKeyword === '' && searchGroup === '') {
-      // If keyword is blank, load files instead
+    if (
+      !hasSearchFilters({ searchKeyword, searchGroup, searchStatus })
+    ) {
       await loadUsers(startIdx, pageSize);
       return;
     }
     setSearching(true);
     const res = await API.get(
-      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}`,
+      `/api/user/search?keyword=${encodeURIComponent(searchKeyword)}&group=${encodeURIComponent(searchGroup)}&status=${encodeURIComponent(searchStatus)}&p=${startIdx}&page_size=${pageSize}`,
     );
     const { success, message, data } = res.data;
     if (success) {
@@ -191,11 +202,17 @@ export const useUsersData = () => {
   // Handle page change
   const handlePageChange = (page) => {
     setActivePage(page);
-    const { searchKeyword, searchGroup } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const filters = getFormValues();
+    if (!hasSearchFilters(filters)) {
       loadUsers(page, pageSize).then();
     } else {
-      searchUsers(page, pageSize, searchKeyword, searchGroup).then();
+      searchUsers(
+        page,
+        pageSize,
+        filters.searchKeyword,
+        filters.searchGroup,
+        filters.searchStatus,
+      ).then();
     }
   };
 
@@ -204,11 +221,19 @@ export const useUsersData = () => {
     localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
-    loadUsers(activePage, size)
-      .then()
-      .catch((reason) => {
-        showError(reason);
-      });
+    const filters = getFormValues();
+    const request = hasSearchFilters(filters)
+      ? searchUsers(
+          1,
+          size,
+          filters.searchKeyword,
+          filters.searchGroup,
+          filters.searchStatus,
+        )
+      : loadUsers(1, size);
+    request.catch((reason) => {
+      showError(reason);
+    });
   };
 
   // Handle table row styling for disabled/deleted users
@@ -226,11 +251,17 @@ export const useUsersData = () => {
 
   // Refresh data
   const refresh = async (page = activePage) => {
-    const { searchKeyword, searchGroup } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const filters = getFormValues();
+    if (!hasSearchFilters(filters)) {
       await loadUsers(page, pageSize);
     } else {
-      await searchUsers(page, pageSize, searchKeyword, searchGroup);
+      await searchUsers(
+        page,
+        pageSize,
+        filters.searchKeyword,
+        filters.searchGroup,
+        filters.searchStatus,
+      );
     }
   };
 
