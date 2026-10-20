@@ -22,12 +22,13 @@ import (
 
 // Adaptor implements channel.Adaptor for synchronous image generation via
 // /v1/images/generations. It submits a CreateAigcImageTask, then polls
-// DescribeTaskDetail internally for up to 90 seconds before returning.
+// DescribeTaskDetail internally until the image is ready or the wait limit is reached.
 type Adaptor struct {
 	subAppId  int64
 	secretId  string
 	secretKey string
 	baseURL   string
+	syncBody  []byte
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
@@ -304,15 +305,23 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 
 	taskID := createResp.Response.TaskId
 
-	// ── internal polling (up to 90s) ─────────────────────────────────
+	// 同步接口要在同一次请求里带回图片。腾讯生图本身是异步任务，
+	// gpt-image-2 经常超过 90 秒，这里把内部等待放到 10 分钟。
 	const (
 		pollInterval = 3 * time.Second
-		maxWait      = 90 * time.Second
+		maxWait      = 10 * time.Minute
 	)
 	deadline := time.Now().Add(maxWait)
+	ctx := c.Request.Context()
 
 	for time.Now().Before(deadline) {
-		time.Sleep(pollInterval)
+		timer := time.NewTimer(pollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 
 		descResp, pollErr := a.describeTask(taskID)
 		if pollErr != nil {
@@ -323,28 +332,28 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 				descResp.Response.Error.Code, descResp.Response.Error.Message)
 		}
 
-	// Use AigcImageTask.Status when available; fall back to top-level Status
-	taskStatus := descResp.Response.Status
-	if descResp.Response.AigcImageTask != nil && descResp.Response.AigcImageTask.Status != "" {
-		taskStatus = descResp.Response.AigcImageTask.Status
-	}
-	switch taskStatus {
-	case "SUCCESS", "FINISH":
-		// Store result in context; DoResponse will read it.
-		c.Set("tencentvod_sync_result", descResp)
-		return nil, nil
-	case "FAIL":
-		var msg string
-		if descResp.Response.AigcImageTask != nil {
-			msg = descResp.Response.AigcImageTask.ErrMsg
-			if msg == "" {
-				msg = descResp.Response.AigcImageTask.ErrCodeExt
-			}
+		// Use AigcImageTask.Status when available; fall back to top-level Status
+		taskStatus := descResp.Response.Status
+		if descResp.Response.AigcImageTask != nil && descResp.Response.AigcImageTask.Status != "" {
+			taskStatus = descResp.Response.AigcImageTask.Status
 		}
-		return nil, fmt.Errorf("tencentvod: image generation failed: %s", msg)
+		switch taskStatus {
+		case "SUCCESS", "FINISH":
+			// Store result in context; DoResponse will read it.
+			c.Set("tencentvod_sync_result", descResp)
+			return nil, nil
+		case "FAIL":
+			var msg string
+			if descResp.Response.AigcImageTask != nil {
+				msg = descResp.Response.AigcImageTask.ErrMsg
+				if msg == "" {
+					msg = descResp.Response.AigcImageTask.ErrCodeExt
+				}
+			}
+			return nil, fmt.Errorf("tencentvod: image generation failed: %s", msg)
+		}
 	}
-	}
-	return nil, errors.New("tencentvod: image generation timed out after 90s")
+	return nil, fmt.Errorf("tencentvod: image generation timed out after %s", maxWait)
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (any, *types.NewAPIError) {
@@ -385,9 +394,14 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		}
 	}
 
+	var imageURLs []string
 	if descResp.Response.AigcImageTask != nil && descResp.Response.AigcImageTask.Output != nil {
 		for _, fi := range descResp.Response.AigcImageTask.Output.FileInfos {
+			if fi.FileUrl == "" {
+				continue
+			}
 			imageResponse.Data = append(imageResponse.Data, dto.ImageData{Url: fi.FileUrl})
+			imageURLs = append(imageURLs, fi.FileUrl)
 		}
 	}
 	if len(imageResponse.Data) == 0 {
@@ -421,33 +435,12 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		}
 	}
 
-	// 腾讯 VOD 接口不返回 token 用量，按生图惯例用 prompt 字符数做占位估算
-	promptTokens := 0
-	if imageReq, ok := info.Request.(*dto.ImageRequest); ok {
-		promptTokens = len([]rune(imageReq.Prompt))
-	}
-	imageResponse.Usage = &dto.ImageUsage{
-		InputTokens: promptTokens,
-		InputTokensDetails: &dto.ImageTokensDetails{
-			TextTokens: promptTokens,
-		},
-		OutputTokens: 1,
-		OutputTokensDetails: &dto.ImageTokensDetails{
-			ImageTokens: 1,
-		},
-		TotalTokens: promptTokens + 1,
-	}
+	// 任务日志存 DescribeTaskDetail 原文。
+	// 给调用方的响应先留着，等结算完成后补上 amount 再写出。
+	service.KeepSyncImageRecord(c, a.syncBody, imageURLs)
+	service.KeepSyncImageClientResponse(c, &imageResponse)
 
-	respBytes, err := common.Marshal(imageResponse)
-	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
-	}
-
-	c.Writer.Header().Set("Content-Type", "application/json")
-	c.Writer.WriteHeader(http.StatusOK)
-	_, _ = c.Writer.Write(respBytes)
-
-	return &dto.Usage{PromptTokens: promptTokens, TotalTokens: promptTokens + 1}, nil
+	return &dto.Usage{}, nil
 }
 
 // describeTask calls DescribeTaskDetail and returns the parsed response.
@@ -490,6 +483,7 @@ func (a *Adaptor) describeTask(taskID string) (*describeTaskResponse, error) {
 	if err := common.Unmarshal(respBodyBytes, &descResp); err != nil {
 		return nil, fmt.Errorf("tencentvod: unmarshal describe response: %w", err)
 	}
+	a.syncBody = append([]byte(nil), respBodyBytes...)
 	return &descResp, nil
 }
 
@@ -518,4 +512,4 @@ func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 }
 
 func (a *Adaptor) GetModelList() []string { return ModelList }
-func (a *Adaptor) GetChannelName() string  { return ChannelName }
+func (a *Adaptor) GetChannelName() string { return ChannelName }

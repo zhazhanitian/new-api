@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "▶ 停止 Go 后端进程..."
 pkill -f "go run main.go" 2>/dev/null || true
+pkill -f "air -c .air.toml" 2>/dev/null || true
+pkill -f "tmp/main" 2>/dev/null || true
 pkill -f "new-api" 2>/dev/null || true
 
 echo "▶ 停止前端开发服务器..."

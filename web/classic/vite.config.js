@@ -88,7 +88,8 @@ export default defineConfig({
     },
   },
   server: {
-    host: '0.0.0.0',
+    // :: 和 Go 一样同时接受 IPv6、IPv4。0.0.0.0 只听 IPv4，浏览器打开 localhost 会先连 ::1，5173 就会打不开。
+    host: '::',
     proxy: {
       '/api': {
         target: process.env.VITE_REACT_APP_SERVER_URL || 'http://localhost:9006',

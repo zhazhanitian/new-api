@@ -44,6 +44,8 @@ import Task from './pages/Task';
 import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
+import ModelTrialPage from './pages/ModelTrial';
+import ModelTrialAdmin from './pages/ModelTrialAdmin';
 import Subscription from './pages/Subscription';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
@@ -153,6 +155,22 @@ function App() {
             <PrivateRoute>
               <Playground />
             </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/model-trial'
+          element={
+            <PrivateRoute>
+              <ModelTrialPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/model-trial-config'
+          element={
+            <AdminRoute>
+              <ModelTrialAdmin />
+            </AdminRoute>
           }
         />
         <Route

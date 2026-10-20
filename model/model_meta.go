@@ -109,6 +109,22 @@ func GetAllModels(offset int, limit int) ([]*Model, error) {
 	return models, err
 }
 
+func GetModelTagsByNames(names []string) (map[string]string, error) {
+	result := make(map[string]string)
+	if len(names) == 0 {
+		return result, nil
+	}
+	var rows []Model
+	err := DB.Select("model_name", "tags").Where("model_name IN ?", names).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.ModelName] = row.Tags
+	}
+	return result, nil
+}
+
 func GetBoundChannelsByModelsMap(modelNames []string) (map[string][]BoundChannel, error) {
 	result := make(map[string][]BoundChannel)
 	if len(modelNames) == 0 {

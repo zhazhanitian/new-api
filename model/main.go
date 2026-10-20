@@ -271,6 +271,8 @@ func migrateDB() error {
 		&QuotaData{},
 		&Task{},
 		&Model{},
+		&ModelTrial{},
+		&ModelTrialProof{},
 		&Vendor{},
 		&PrefillGroup{},
 		&Setup{},

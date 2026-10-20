@@ -105,9 +105,10 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 
 	// 聊天区域 - 所有用户都可以访问
 	defaultConfig["chat"] = map[string]interface{}{
-		"enabled":    true,
-		"playground": true,
-		"chat":       true,
+		"enabled":     true,
+		"playground":  true,
+		"model_trial": true,
+		"chat":        true,
 	}
 
 	// 控制台区域 - 所有用户都可以访问
@@ -131,22 +132,24 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":            true,
+			"channel":            true,
+			"models":             true,
+			"model_trial_config": true,
+			"redemption":         true,
+			"user":               true,
+			"setting":            false, // 管理员不能访问系统设置
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":            true,
+			"channel":            true,
+			"models":             true,
+			"model_trial_config": true,
+			"redemption":         true,
+			"user":               true,
+			"setting":            true,
 		}
 	}
 	// 普通用户不包含admin区域
