@@ -439,6 +439,31 @@ func decodeTrialExamples(raw string) ([]trial.Example, error) {
 	return examples, nil
 }
 
+type modelTrialPreviewPayload struct {
+	ModelName string         `json:"model_name"`
+	APIKind   string         `json:"api_kind"`
+	Nodes     []trial.Node   `json:"nodes"`
+	Values    map[string]any `json:"values"`
+}
+
+func PreviewModelTrial(c *gin.Context) {
+	var req modelTrialPreviewPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求体无效")
+		return
+	}
+	body, path, err := trial.Preview(trial.APIKind(req.APIKind), req.ModelName, req.Nodes, req.Values)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"method": "POST",
+		"path":   path,
+		"body":   body,
+	})
+}
+
 func saveTrialExamples(item *model.ModelTrial, examples []trial.Example) error {
 	raw, err := json.Marshal(examples)
 	if err != nil {

@@ -231,6 +231,28 @@ func TestRejectsEscapingPath(t *testing.T) {
 	}
 }
 
+func TestPreviewSkipsEmptyRequired(t *testing.T) {
+	nodes := []Node{
+		{ID: "prompt", Type: NodeField, Key: "prompt", Label: "提示词", Widget: "textarea", Required: true},
+		{ID: "size", Type: NodeField, Key: "size", Label: "尺寸", Widget: "text"},
+	}
+	body, path, err := Preview(APIKindImageGeneration, "OG-image-2", nodes, map[string]any{
+		"size": "1792x1024",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != "/v1/images/generations" {
+		t.Fatalf("path = %s", path)
+	}
+	if body["model"] != "OG-image-2" || body["size"] != "1792x1024" {
+		t.Fatalf("body = %#v", body)
+	}
+	if _, ok := body["prompt"]; ok {
+		t.Fatalf("empty prompt leaked: %#v", body)
+	}
+}
+
 func TestExampleStaleWhenOptionRemoved(t *testing.T) {
 	nodes := []Node{{
 		ID: "mode", Type: NodeBranch, Label: "模式", Submit: boolPtr(false),

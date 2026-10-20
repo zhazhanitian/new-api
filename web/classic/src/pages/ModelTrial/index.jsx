@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Radio, RadioGroup, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { API, showError } from '../../helpers';
 import { API_KINDS, runTrialFlow } from '../../helpers/modelTrial';
 import TrialForm from '../../components/model-trial/TrialForm';
+import RequestJson from '../../components/model-trial/RequestJson';
 import ResultView from '../../components/model-trial/ResultView';
 
 const { Title, Text, Paragraph } = Typography;
@@ -28,6 +29,7 @@ export default function ModelTrialPage() {
   const [streamingText, setStreamingText] = useState('');
   const [error, setError] = useState('');
   const [running, setRunning] = useState(false);
+  const [trialView, setTrialView] = useState('form');
 
   useEffect(() => {
     let cancelled = false;
@@ -271,7 +273,27 @@ export default function ModelTrialPage() {
                 ))}
               </div>
             )}
-            <TrialForm nodes={current?.nodes || []} values={values} onChange={setValues} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+              <RadioGroup
+                type='button'
+                size='small'
+                value={trialView}
+                onChange={(e) => setTrialView(e.target.value)}
+              >
+                <Radio value='form'>表单</Radio>
+                <Radio value='json'>JSON</Radio>
+              </RadioGroup>
+            </div>
+            {trialView === 'json' ? (
+              <RequestJson
+                modelName={current?.model_name}
+                apiKind={current?.api_kind}
+                nodes={current?.nodes || []}
+                values={values}
+              />
+            ) : (
+              <TrialForm nodes={current?.nodes || []} values={values} onChange={setValues} />
+            )}
             <Button theme='solid' loading={running} disabled={!current} onClick={() => run()}>
               运行
             </Button>

@@ -8,6 +8,23 @@ import (
 )
 
 func Assemble(kind APIKind, modelName string, nodes []Node, values map[string]any) (map[string]any, error) {
+	return assemble(kind, modelName, nodes, values, false)
+}
+
+// Preview 用和正式组装相同的规则生成请求体。未填的必填项会跳过，方便对照表单查看结构。
+func Preview(kind APIKind, modelName string, nodes []Node, values map[string]any) (map[string]any, string, error) {
+	path, err := CanonicalPath(kind)
+	if err != nil {
+		return nil, "", err
+	}
+	body, err := assemble(kind, modelName, nodes, values, true)
+	if err != nil {
+		return nil, path, err
+	}
+	return body, path, nil
+}
+
+func assemble(kind APIKind, modelName string, nodes []Node, values map[string]any, preview bool) (map[string]any, error) {
 	if err := Validate(kind, nodes); err != nil {
 		return nil, err
 	}
@@ -18,22 +35,22 @@ func Assemble(kind APIKind, modelName string, nodes []Node, values map[string]an
 		values = map[string]any{}
 	}
 	body := map[string]any{}
-	if err := applyNodes(kind, nodes, "", body, values); err != nil {
+	if err := applyNodes(kind, nodes, "", body, values, preview); err != nil {
 		return nil, err
 	}
 	body["model"] = modelName
 	return body, nil
 }
 
-func applyNodes(kind APIKind, nodes []Node, prefix string, body map[string]any, values map[string]any) error {
+func applyNodes(kind APIKind, nodes []Node, prefix string, body map[string]any, values map[string]any, preview bool) error {
 	for _, node := range nodes {
 		switch node.Type {
 		case NodeField:
-			if err := applyField(node, prefix, body, values); err != nil {
+			if err := applyField(node, prefix, body, values, preview); err != nil {
 				return err
 			}
 		case NodeSelect, NodeBranch:
-			if err := applyChoice(kind, node, prefix, body, values); err != nil {
+			if err := applyChoice(kind, node, prefix, body, values, preview); err != nil {
 				return err
 			}
 		case NodeObject:
@@ -45,7 +62,7 @@ func applyNodes(kind APIKind, nodes []Node, prefix string, body map[string]any, 
 				}
 				next = path
 			}
-			if err := applyNodes(kind, node.Nodes, next, body, values); err != nil {
+			if err := applyNodes(kind, node.Nodes, next, body, values, preview); err != nil {
 				return err
 			}
 		default:
@@ -55,13 +72,16 @@ func applyNodes(kind APIKind, nodes []Node, prefix string, body map[string]any, 
 	return nil
 }
 
-func applyField(node Node, prefix string, body map[string]any, values map[string]any) error {
+func applyField(node Node, prefix string, body map[string]any, values map[string]any, preview bool) error {
 	value, ok, err := fieldValue(node, values)
 	if err != nil {
+		if preview {
+			return nil
+		}
 		return err
 	}
 	if !ok {
-		if node.Required {
+		if node.Required && !preview {
 			return fmt.Errorf("请填写%s", node.Label)
 		}
 		return nil
@@ -193,7 +213,7 @@ func checkRange(node Node, num float64) error {
 	return nil
 }
 
-func applyChoice(kind APIKind, node Node, prefix string, body map[string]any, values map[string]any) error {
+func applyChoice(kind APIKind, node Node, prefix string, body map[string]any, values map[string]any, preview bool) error {
 	raw, ok := values[node.ID]
 	selected := ""
 	if ok && raw != nil {
@@ -204,7 +224,7 @@ func applyChoice(kind APIKind, node Node, prefix string, body map[string]any, va
 		selected = text
 	}
 	if selected == "" {
-		if node.Required {
+		if node.Required && !preview {
 			return fmt.Errorf("请选择%s", node.Label)
 		}
 		return nil
@@ -218,6 +238,9 @@ func applyChoice(kind APIKind, node Node, prefix string, body map[string]any, va
 	}
 	if chosen == nil {
 		if !(node.Type == NodeSelect && node.AllowCustom) {
+			if preview {
+				return nil
+			}
 			return fmt.Errorf("%s 的选项不存在", node.Label)
 		}
 	}
@@ -233,7 +256,7 @@ func applyChoice(kind APIKind, node Node, prefix string, body map[string]any, va
 	if chosen == nil {
 		return nil
 	}
-	return applyNodes(kind, chosen.Nodes, prefix, body, values)
+	return applyNodes(kind, chosen.Nodes, prefix, body, values, preview)
 }
 
 func asFloat(raw any) (float64, bool) {

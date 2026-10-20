@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Button,
   Input,
   Popconfirm,
+  Radio,
+  RadioGroup,
   Select,
   Switch,
   Tag,
@@ -15,9 +17,67 @@ import { API, showError } from '../../helpers';
 import { API_KINDS, runTrialFlow } from '../../helpers/modelTrial';
 import NodeEditor, { ensureNodeIds } from '../../components/model-trial/NodeEditor';
 import TrialForm from '../../components/model-trial/TrialForm';
+import RequestJson from '../../components/model-trial/RequestJson';
 import ResultView from '../../components/model-trial/ResultView';
 
 const { Title, Text } = Typography;
+
+const ASIDE_WIDTH_KEY = 'model-trial-aside-width';
+
+function initialAsideWidth() {
+  const saved = Number(localStorage.getItem(ASIDE_WIDTH_KEY));
+  if (Number.isFinite(saved) && saved >= 360) return saved;
+  if (typeof window === 'undefined') return 560;
+  return Math.round(Math.min(720, Math.max(520, window.innerWidth * 0.36)));
+}
+
+function ColumnSplit({ onResize, onResizeEnd }) {
+  const [active, setActive] = useState(false);
+  const startDrag = (event) => {
+    event.preventDefault();
+    setActive(true);
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const move = (ev) => onResize(ev.clientX);
+    const up = () => {
+      setActive(false);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      onResizeEnd();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    onResize(event.clientX);
+  };
+  return (
+    <div
+      role='separator'
+      aria-orientation='vertical'
+      onPointerDown={startDrag}
+      style={{
+        width: 16,
+        flex: 'none',
+        cursor: 'col-resize',
+        display: 'flex',
+        justifyContent: 'center',
+        touchAction: 'none',
+      }}
+    >
+      <div
+        style={{
+          width: active ? 2 : 1,
+          height: '100%',
+          borderRadius: 1,
+          background: active ? 'var(--semi-color-primary)' : 'var(--semi-color-border)',
+        }}
+      />
+    </div>
+  );
+}
 
 function modelTags(item) {
   return String(item?.tags || '')
@@ -60,6 +120,7 @@ export default function ModelTrialAdmin() {
   const [groups, setGroups] = useState([]);
   const [group, setGroup] = useState('');
   const [values, setValues] = useState({});
+  const [trialView, setTrialView] = useState('form');
   const [result, setResult] = useState(null);
   const [streamingText, setStreamingText] = useState('');
   const [error, setError] = useState('');
@@ -67,6 +128,19 @@ export default function ModelTrialAdmin() {
   const [testing, setTesting] = useState(false);
   const [exampleTitle, setExampleTitle] = useState('');
   const [exampleDescription, setExampleDescription] = useState('');
+  const [asideWidth, setAsideWidth] = useState(initialAsideWidth);
+  const asideWidthRef = useRef(asideWidth);
+  const splitRef = useRef(null);
+
+  const resizeAside = (clientX) => {
+    const rect = splitRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const min = 360;
+    const max = Math.max(min, rect.width - 480);
+    const next = Math.round(Math.min(Math.max(rect.right - clientX, min), max));
+    asideWidthRef.current = next;
+    setAsideWidth(next);
+  };
 
   const load = async () => {
     const res = await API.get('/api/model-trials/');
@@ -392,8 +466,11 @@ export default function ModelTrialAdmin() {
         </Popconfirm>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 460px', gap: 20, alignItems: 'stretch' }}>
-        <section style={{ minWidth: 0, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+      <div
+        ref={splitRef}
+        style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch' }}
+      >
+        <section style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'auto', paddingRight: 8 }}>
           <NodeEditor
             apiKind={draft.api_kind}
             nodes={draft.nodes}
@@ -401,8 +478,15 @@ export default function ModelTrialAdmin() {
           />
         </section>
 
+        <ColumnSplit
+          onResize={resizeAside}
+          onResizeEnd={() => localStorage.setItem(ASIDE_WIDTH_KEY, String(asideWidthRef.current))}
+        />
+
         <aside
           style={{
+            width: asideWidth,
+            flex: 'none',
             minHeight: 0,
             display: 'flex',
             flexDirection: 'column',
@@ -413,9 +497,20 @@ export default function ModelTrialAdmin() {
           }}
         >
           <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
-            <Text strong>试调</Text>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <Text strong>试调</Text>
+              <RadioGroup
+                type='button'
+                size='small'
+                value={trialView}
+                onChange={(e) => setTrialView(e.target.value)}
+              >
+                <Radio value='form'>表单</Radio>
+                <Radio value='json'>JSON</Radio>
+              </RadioGroup>
+            </div>
             <Text type='tertiary' size='small' style={{ display: 'block', margin: '4px 0 12px' }}>
-              表单顺序与左侧卡片一致。
+              {trialView === 'json' ? '和正式请求使用同一套组装，可复制。' : '表单顺序与左侧卡片一致。'}
             </Text>
             <Select
               style={{ width: '100%', marginBottom: 16 }}
@@ -463,7 +558,16 @@ export default function ModelTrialAdmin() {
                 </div>
               </div>
             )}
-            <TrialForm nodes={draft.nodes} values={values} onChange={setValues} />
+            {trialView === 'json' ? (
+              <RequestJson
+                modelName={draft.model_name}
+                apiKind={draft.api_kind}
+                nodes={draft.nodes}
+                values={values}
+              />
+            ) : (
+              <TrialForm nodes={draft.nodes} values={values} onChange={setValues} />
+            )}
             <Button theme='solid' loading={testing} onClick={() => test()} disabled={!draft.model_name}>
               测试
             </Button>
