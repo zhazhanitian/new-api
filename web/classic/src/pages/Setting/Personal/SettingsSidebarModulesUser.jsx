@@ -73,6 +73,7 @@ export default function SettingsSidebarModulesUser() {
       defaultConfig.chat = {
         enabled: true,
         playground: isSidebarModuleAllowed('chat', 'playground'),
+        model_trial: isSidebarModuleAllowed('chat', 'model_trial'),
         chat: isSidebarModuleAllowed('chat', 'chat'),
       };
     }
@@ -104,6 +105,7 @@ export default function SettingsSidebarModulesUser() {
         enabled: true,
         channel: isSidebarModuleAllowed('admin', 'channel'),
         models: isSidebarModuleAllowed('admin', 'models'),
+        model_trial_config: isSidebarModuleAllowed('admin', 'model_trial_config'),
         deployment: isSidebarModuleAllowed('admin', 'deployment'),
         redemption: isSidebarModuleAllowed('admin', 'redemption'),
         user: isSidebarModuleAllowed('admin', 'user'),
@@ -300,6 +302,11 @@ export default function SettingsSidebarModulesUser() {
           title: t('操练场'),
           description: t('AI模型测试环境'),
         },
+        {
+          key: 'model_trial',
+          title: t('模型体验'),
+          description: t('按配置体验模型调用'),
+        },
         { key: 'chat', title: t('聊天'), description: t('聊天会话管理') },
       ],
     },
@@ -339,6 +346,11 @@ export default function SettingsSidebarModulesUser() {
       modules: [
         { key: 'channel', title: t('渠道管理'), description: t('API渠道配置') },
         { key: 'models', title: t('模型管理'), description: t('AI模型配置') },
+        {
+          key: 'model_trial_config',
+          title: t('体验配置'),
+          description: t('配置模型在线体验'),
+        },
         {
           key: 'deployment',
           title: t('模型部署'),

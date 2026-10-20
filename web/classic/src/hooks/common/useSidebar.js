@@ -29,6 +29,7 @@ export const DEFAULT_ADMIN_CONFIG = {
   chat: {
     enabled: true,
     playground: true,
+    model_trial: true,
     chat: true,
   },
   console: {
@@ -48,6 +49,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     enabled: true,
     channel: true,
     models: true,
+    model_trial_config: true,
     deployment: true,
     redemption: true,
     user: true,

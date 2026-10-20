@@ -181,6 +181,8 @@ type ImageResponse struct {
 	Size         string          `json:"size,omitempty"`
 	Usage        *ImageUsage     `json:"usage,omitempty"`
 	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	// Amount 是本次实扣的人民币金额，6 位小数。只在同步生图结算完成后写入。
+	Amount string `json:"amount,omitempty"`
 }
 
 type ImageData struct {
@@ -190,11 +192,11 @@ type ImageData struct {
 }
 
 type ImageUsage struct {
-	InputTokens         int                  `json:"input_tokens"`
-	InputTokensDetails  *ImageTokensDetails  `json:"input_tokens_details,omitempty"`
-	OutputTokens        int                  `json:"output_tokens"`
-	OutputTokensDetails *ImageTokensDetails  `json:"output_tokens_details,omitempty"`
-	TotalTokens         int                  `json:"total_tokens"`
+	InputTokens         int                 `json:"input_tokens"`
+	InputTokensDetails  *ImageTokensDetails `json:"input_tokens_details,omitempty"`
+	OutputTokens        int                 `json:"output_tokens"`
+	OutputTokensDetails *ImageTokensDetails `json:"output_tokens_details,omitempty"`
+	TotalTokens         int                 `json:"total_tokens"`
 }
 
 type ImageTokensDetails struct {

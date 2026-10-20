@@ -48,6 +48,8 @@ const routerMap = {
   models: '/console/models',
   deployment: '/console/deployment',
   playground: '/console/playground',
+  model_trial: '/console/model-trial',
+  model_trial_config: '/console/model-trial-config',
   personal: '/console/personal',
 };
 
@@ -166,6 +168,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {
+        text: t('体验配置'),
+        itemKey: 'model_trial_config',
+        to: '/console/model-trial-config',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
         text: t('模型部署'),
         itemKey: 'deployment',
         to: '/deployment',
@@ -206,6 +214,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('操练场'),
         itemKey: 'playground',
         to: '/playground',
+      },
+      {
+        text: t('模型体验'),
+        itemKey: 'model_trial',
+        to: '/model-trial',
       },
       {
         text: t('聊天'),

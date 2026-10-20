@@ -105,6 +105,24 @@ func CleanupBodyStorage(c *gin.Context) {
 	}
 }
 
+// ReplaceRequestBody 用新的 JSON 替换可重复读取的请求体。
+func ReplaceRequestBody(c *gin.Context, data []byte) error {
+	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {
+		if bs, ok := storage.(BodyStorage); ok {
+			bs.Close()
+		}
+	}
+	storage, err := CreateBodyStorage(data)
+	if err != nil {
+		return err
+	}
+	c.Set(KeyBodyStorage, storage)
+	c.Request.Body = io.NopCloser(bytes.NewReader(data))
+	c.Request.ContentLength = int64(len(data))
+	c.Request.Header.Set("Content-Type", "application/json")
+	return nil
+}
+
 func UnmarshalBodyReusable(c *gin.Context, v any) error {
 	storage, err := GetBodyStorage(c)
 	if err != nil {

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import JSONEditor from '../../../common/ui/JSONEditor';
 import {
   Banner,
@@ -65,6 +66,7 @@ const nameRuleOptions = [
 
 const EditModelModal = (props) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
@@ -258,6 +260,19 @@ const EditModelModal = (props) => {
       footer={
         <div className='flex justify-end bg-white'>
           <Space>
+            {isEdit && props.editingModel?.model_name && (
+              <Button
+                theme='light'
+                className='!rounded-lg'
+                onClick={() =>
+                  navigate(
+                    `/console/model-trial-config?model=${encodeURIComponent(props.editingModel.model_name)}`,
+                  )
+                }
+              >
+                {t('体验配置')}
+              </Button>
+            )}
             <Button
               theme='solid'
               className='!rounded-lg'

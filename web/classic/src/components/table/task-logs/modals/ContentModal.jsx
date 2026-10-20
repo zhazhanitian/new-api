@@ -21,6 +21,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Typography, Spin } from '@douyinfe/semi-ui';
 import { IconExternalOpen, IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import JsonCodeBlock from '../../../common/JsonCodeBlock';
 
 const { Text } = Typography;
 
@@ -159,8 +160,8 @@ const ContentModal = ({
       onCancel={() => setIsModalOpen(false)}
       closable={null}
       bodyStyle={{
-        height: isVideo ? '70vh' : '400px',
-        maxHeight: '80vh',
+        height: isVideo ? '70vh' : 'auto',
+        maxHeight: isVideo ? '80vh' : '60vh',
         overflow: 'auto',
         padding: isVideo && videoError ? '0' : '24px',
       }}
@@ -170,7 +171,7 @@ const ContentModal = ({
       {isVideo ? (
         renderVideoContent()
       ) : (
-        <p style={{ whiteSpace: 'pre-line' }}>{modalContent}</p>
+        <JsonCodeBlock text={modalContent} />
       )}
     </Modal>
   );

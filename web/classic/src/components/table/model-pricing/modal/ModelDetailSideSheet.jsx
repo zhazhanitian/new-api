@@ -52,9 +52,7 @@ const ModelDetailSideSheet = ({
   return (
     <SideSheet
       placement='right'
-      title={
-        <ModelHeader modelData={modelData} vendorsMap={vendorsMap} t={t} />
-      }
+      title={<ModelHeader modelData={modelData} vendorsMap={vendorsMap} t={t} />}
       bodyStyle={{
         padding: '0',
         display: 'flex',

@@ -459,6 +459,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
 
+	// 阶梯计费的实扣在 summary.Quota，PriceData.Quota 仍是预扣前的 0。
+	// 回写后，同步生图任务日志才能显示和消费日志相同的金额。
+	relayInfo.PriceData.Quota = summary.Quota
+
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,

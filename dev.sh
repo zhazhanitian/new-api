@@ -40,14 +40,32 @@ else
   echo "⚡ 跳过前端构建（--skip-build）"
 fi
 
-echo "▶ 编译并启动 Go 后端..."
+echo "▶ 编译并启动 Go 后端（保存 .go 后自动重启）..."
 export SQL_DSN="postgresql://root:123456@localhost:5432/new-api"
 export REDIS_CONN_STRING="redis://localhost:6379"
 export TZ="Asia/Shanghai"
 export BATCH_UPDATE_ENABLED="true"
 export PORT="9006"
 
-go run main.go &
+# 人像库凭据在包初始化时用 os.Getenv 读取，早于 main 里的 godotenv.Load。
+# 必须在 go run 之前导出，只写在 .env 里进程读不到。
+if [ -f .env ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      VOLC_PORTRAIT_ACCESS_KEY_ID=*|VOLC_PORTRAIT_SECRET_ACCESS_KEY=*|VOLC_PORTRAIT_PROJECT_NAME=*|VOLC_PORTRAIT_REGION=*)
+        export "$line"
+        ;;
+    esac
+  done < .env
+fi
+
+export PATH="$(go env GOPATH)/bin:$PATH"
+if ! command -v air >/dev/null 2>&1; then
+  echo "▶ 安装 Go 热更新工具 air..."
+  go install github.com/air-verse/air@latest
+fi
+
+air -c .air.toml &
 BACKEND_PID=$!
 
 echo "▶ 等待 Go 后端就绪（:9006）..."

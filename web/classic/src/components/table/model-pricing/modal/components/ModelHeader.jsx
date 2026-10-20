@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Typography, Toast, Avatar } from '@douyinfe/semi-ui';
+import { Typography, Toast, Avatar, Button } from '@douyinfe/semi-ui';
+import { IconExternalOpen } from '@douyinfe/semi-icons';
 import { getLobeHubIcon } from '../../../../../helpers';
 
 const { Paragraph } = Typography;
@@ -76,9 +77,10 @@ const ModelHeader = ({ modelData, vendorsMap = {}, t }) => {
   return (
     <div className='flex items-center'>
       {getModelIcon()}
-      <div className='ml-3 font-normal'>
+      <div className='ml-3 flex items-center min-w-0' style={{ gap: 4 }}>
         <Paragraph
           className='!mb-0 !text-lg !font-medium'
+          style={{ width: 'auto', flex: 'none', marginBottom: 0 }}
           copyable={{
             content: modelData?.model_name || '',
             onCopy: () => Toast.success({ content: t('已复制模型名称') }),
@@ -88,6 +90,22 @@ const ModelHeader = ({ modelData, vendorsMap = {}, t }) => {
             {modelData?.model_name || t('未知模型')}
           </span>
         </Paragraph>
+        {modelData?.model_name && (
+          <Button
+            size='small'
+            theme='light'
+            type='primary'
+            icon={<IconExternalOpen size='small' />}
+            iconPosition='right'
+            style={{ flex: 'none', height: 22, padding: '0 8px', fontSize: 12, marginLeft: 4, borderRadius: 11 }}
+            onClick={() => {
+              const url = `/console/model-trial?model=${encodeURIComponent(modelData.model_name)}`;
+              window.open(url, '_blank', 'noopener,noreferrer');
+            }}
+          >
+            {t('在线测试')}
+          </Button>
+        )}
       </div>
     </div>
   );

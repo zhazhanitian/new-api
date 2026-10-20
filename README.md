@@ -14,6 +14,8 @@
 
 ### 启动
 
+`./dev.sh` 会先准备数据库，再用 air 启动后端。保存 `.go` 文件后，后端会自动重新编译并重启。
+
 ```bash
 # 首次启动（含前端构建，耗时较长）
 ./dev.sh
@@ -27,7 +29,30 @@
 脚本做了什么：
 1. 用 `docker-compose.dev.yml` 启动 PostgreSQL 和 Redis
 2. 构建前端（`web/classic`，使用 bun）
-3. 用 `go run main.go` 启动后端，自动注入本地数据库/Redis 连接串
+3. 用 air 启动后端并监听 `.go` 文件，自动注入本地数据库/Redis 连接串
+
+### 开发热更新
+
+数据库和 Redis 仍由 `./dev.sh` 拉起。前后端分成两个终端。
+
+终端 1，后端：
+
+```bash
+./dev.sh --skip-build
+```
+
+后端在 `http://localhost:9006`。改完 `.go` 并保存后，这个终端会自动重新编译并重启，不用手动停掉再开。第一次运行如果没有 air，脚本会自动安装。
+
+终端 2，前端：
+
+```bash
+cd web/classic
+bun run dev
+```
+
+浏览器打开 Vite 打印的地址，一般是 `http://localhost:5173`。这个开发服务器会把 `/api`、`/pg`、`/v1` 转到 `9006`。改 `web/classic` 里的页面会自动刷新。
+
+不要用 `http://localhost:9006` 看界面。那里是上次打包嵌进后端的旧页面。
 
 ### 停止
 

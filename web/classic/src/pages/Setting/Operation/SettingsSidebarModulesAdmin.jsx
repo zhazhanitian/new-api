@@ -43,6 +43,7 @@ export default function SettingsSidebarModulesAdmin(props) {
     chat: {
       enabled: true,
       playground: true,
+      model_trial: true,
       chat: true,
     },
     console: {
@@ -62,6 +63,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       enabled: true,
       channel: true,
       models: true,
+      model_trial_config: true,
       deployment: true,
       redemption: true,
       user: true,
@@ -104,6 +106,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       chat: {
         enabled: true,
         playground: true,
+        model_trial: true,
         chat: true,
       },
       console: {
@@ -123,6 +126,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         enabled: true,
         channel: true,
         models: true,
+        model_trial_config: true,
         deployment: true,
         redemption: true,
         user: true,
@@ -178,7 +182,7 @@ export default function SettingsSidebarModulesAdmin(props) {
       } catch (error) {
         // 使用默认配置
         const defaultModules = {
-          chat: { enabled: true, playground: true, chat: true },
+          chat: { enabled: true, playground: true, model_trial: true, chat: true },
           console: {
             enabled: true,
             detail: true,
@@ -192,6 +196,7 @@ export default function SettingsSidebarModulesAdmin(props) {
             enabled: true,
             channel: true,
             models: true,
+            model_trial_config: true,
             deployment: true,
             redemption: true,
             user: true,
@@ -215,6 +220,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'playground',
           title: t('操练场'),
           description: t('AI模型测试环境'),
+        },
+        {
+          key: 'model_trial',
+          title: t('模型体验'),
+          description: t('按配置体验模型调用'),
         },
         { key: 'chat', title: t('聊天'), description: t('聊天会话管理') },
       ],
@@ -255,6 +265,11 @@ export default function SettingsSidebarModulesAdmin(props) {
       modules: [
         { key: 'channel', title: t('渠道管理'), description: t('API渠道配置') },
         { key: 'models', title: t('模型管理'), description: t('AI模型配置') },
+        {
+          key: 'model_trial_config',
+          title: t('体验配置'),
+          description: t('配置模型在线体验'),
+        },
         {
           key: 'deployment',
           title: t('模型部署'),

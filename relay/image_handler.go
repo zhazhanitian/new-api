@@ -153,6 +153,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
+	service.WriteSyncImageClientResponse(c, info.PriceData.Quota)
 
 	// 成功：写 SUCCESS 任务记录，使同步生图在任务日志中可见。
 	// 失败由 controller/relay.go 的 defer 统一处理（所有重试耗尽后写 FAILURE 记录）。

@@ -80,6 +80,8 @@ import {
   Package,
   Server,
   CalendarClock,
+  FlaskConical,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -125,6 +127,10 @@ export function getLucideIcon(key, selected = false) {
       return <LayoutDashboard {...commonProps} color={iconColor} />;
     case 'playground':
       return <TerminalSquare {...commonProps} color={iconColor} />;
+    case 'model_trial':
+      return <FlaskConical {...commonProps} color={iconColor} />;
+    case 'model_trial_config':
+      return <SlidersHorizontal {...commonProps} color={iconColor} />;
     case 'chat':
       return <MessageSquare {...commonProps} color={iconColor} />;
     case 'token':

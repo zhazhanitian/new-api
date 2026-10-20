@@ -80,6 +80,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
+				selfRoute.GET("/model-trials", controller.ListEnabledModelTrials)
 				selfRoute.PUT("/self", controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
 				selfRoute.GET("/token", controller.GenerateAccessToken)
@@ -346,6 +347,19 @@ func SetApiRouter(router *gin.Engine) {
 			vendorRoute.POST("/", controller.CreateVendorMeta)
 			vendorRoute.PUT("/", controller.UpdateVendorMeta)
 			vendorRoute.DELETE("/:id", controller.DeleteVendorMeta)
+		}
+
+		modelTrialsRoute := apiRouter.Group("/model-trials")
+		modelTrialsRoute.Use(middleware.AdminAuth())
+		{
+			modelTrialsRoute.GET("/", controller.ListModelTrials)
+			modelTrialsRoute.POST("/", controller.CreateModelTrial)
+			modelTrialsRoute.GET("/:id", controller.GetModelTrial)
+			modelTrialsRoute.PUT("/:id", controller.UpdateModelTrial)
+			modelTrialsRoute.DELETE("/:id", controller.DeleteModelTrial)
+			modelTrialsRoute.POST("/:id/examples", controller.SaveModelTrialExample)
+			modelTrialsRoute.PUT("/:id/examples/:exampleId", controller.UpdateModelTrialExample)
+			modelTrialsRoute.DELETE("/:id/examples/:exampleId", controller.DeleteModelTrialExample)
 		}
 
 		modelsRoute := apiRouter.Group("/models")
