@@ -28,38 +28,52 @@
 
 ## 二、官方视频模型价格清单
 
-单位：人民币元/秒。
+与 `docs/渠道官方接口文档/腾讯接口文档/AIGC生视频模型价格.md`（2026-10-27）对齐。单位：人民币元/秒。厂商、模型名、属性按官方原样，包括 `montion-control`、`avater`。空档官方表为「-」。错峰价不列入，表达式也不使用。
 
 | 厂商 | 模型/版本 | 属性 | 480/540P | 720/768P | 1080P | 2K | 4K |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Hunyuan | 1.5 | - | - | 0.300 | 0.500 | 0.750 | 1.120 |
+| Vidu | q3-drama | 参考生 | - | - | 0.875 | 1.050 | 1.260 |
+| Vidu | q3-mix | 参考生 | - | 0.782 | 0.938 | 1.126 | 1.352 |
 | Vidu | q3 | 参考生 | 0.313 | 0.625 | 0.782 | 0.939 | 1.127 |
 | Vidu | q3-pro | 图生、文生、首尾帧生 | 0.313 | 0.782 | 0.938 | 1.126 | 1.351 |
 | Vidu | q3-turbo | 图生、文生、首尾帧生 | 0.250 | 0.375 | 0.438 | 0.526 | 0.631 |
+| Vidu | q3-turbo | 参考生 | 0.125 | 0.313 | 0.406 | 0.487 | 0.585 |
 | Vidu | q2 | 文生 | - | 0.320 | 0.470 | 0.700 | 1.050 |
 | Vidu | q2 | 参考生 | 0.240 | 0.320 | 0.820 | 1.230 | 1.845 |
 | Vidu | q2-pro | 图生、首尾帧生 | - | 0.350 | 0.700 | 1.000 | 1.500 |
 | Vidu | q2-pro | 参考生 | 0.270 | 0.350 | 0.900 | 1.350 | 2.025 |
 | Vidu | q2-turbo | 图生、首尾帧生 | - | 0.250 | 0.470 | 0.700 | 1.050 |
+| Kling | 3.0-turbo | - | - | 0.800 | 1.000 | 1.200 | 1.440 |
 | Kling | 3.0-Omni | 无参考视频+无声 | - | 0.600 | 0.800 | 1.000 | 3.000 |
 | Kling | 3.0-Omni | 无参考视频+有声 | - | 0.800 | 1.000 | 1.200 | 3.000 |
 | Kling | 3.0-Omni | 有参考视频+无声 | - | 0.900 | 1.200 | 1.500 | 2.000 |
 | Kling | 3.0 | 无声 | - | 0.600 | 0.800 | 1.000 | 3.000 |
 | Kling | 3.0 | 有声+无音色 | - | 0.900 | 1.200 | 1.500 | 3.000 |
+| Kling | 3.0-montion-control | 3.0动作控制 | - | 0.900 | 1.200 | 1.800 | 2.700 |
 | Kling | O1 | 无参考视频 | - | 0.600 | 0.800 | 1.200 | 1.800 |
 | Kling | O1 | 有参考视频 | - | 0.900 | 1.200 | 1.800 | 2.700 |
 | Kling | 2.6 | 无声 | - | 0.300 | 0.500 | 0.750 | 1.120 |
 | Kling | 2.6 | 有声 | - | - | 1.000 | 1.500 | 2.250 |
+| Kling | 2.6-montion-control | 2.6动作控制 | - | 0.500 | 0.800 | 1.200 | 1.800 |
 | Kling | 2.5-pro | - | - | 0.300 | 0.500 | 0.750 | 1.120 |
 | Kling | 1.6、2.0、2.1 | - | - | 0.400 | 0.700 | 1.000 | 1.500 |
+| Kling | avater（数智人） | - | - | 0.400 | 0.800 | 1.200 | 1.800 |
+| Kling | Identifyface（对口型） | 每不足5秒按照5秒计费 | - | - | 0.100 | - | - |
+| H2 | 1.1 | - | - | 0.900 | 1.200 | 1.440 | 1.728 |
+| H2 | 1.0 | - | - | 0.900 | 1.600 | 1.920 | 2.304 |
+| Hailuo | H3 | 输出视频 | - | 0.500 | 0.650 | 0.800 | 0.960 |
+| Hailuo | H3 | 输入视频（分辨率按输出视频分辨率落档） | - | 0.500 | 0.500 | 0.800 | 0.800 |
 | Hailuo | 02、2.3 | - | - | 0.330 | 0.580 | 0.930 | 1.490 |
 | Hailuo | 2.3-fast | - | - | 0.225 | 0.385 | 0.580 | 0.870 |
-| Hailuo | H3 | - | - | **待确认** | **待确认** | **待确认** | **待确认** |
+| GV | omni | 输出视频 | - | 0.750 | 1.125 | 1.350 | 1.620 |
 | GV | 3.1 | 有声 | - | 3.000 | 3.000 | 3.750 | 4.500 |
 | GV | 3.1 | 无声 | - | 1.500 | 1.500 | 2.250 | 3.000 |
 | GV | 3.1-fast | 有声 | - | 1.125 | 1.125 | 1.875 | 2.625 |
 | GV | 3.1-fast | 无声 | - | 0.750 | 0.750 | 1.500 | 2.250 |
-| OS | 2.0 | - | - | 0.750 | 1.125 | 1.688 | 2.531 |
+| GV | 3.1-lite | 有声 | - | 0.375 | 0.600 | 0.900 | 1.125 |
+| GV | 3.1-lite | 无声 | - | 0.225 | 0.375 | 0.600 | 0.750 |
+| OS | 2.0（2026年9月15日下架） | - | - | 0.750 | 1.125 | 1.688 | 2.531 |
 | PixVerse | V5.6 | 无声 | 0.245 | 0.315 | 0.525 | 0.735 | 1.029 |
 | PixVerse | V6.0 | 无声 | 0.205 | 0.264 | 0.528 | 0.634 | 0.760 |
 | PixVerse | V6.0 | 有声 | 0.264 | 0.352 | 0.675 | 0.810 | 0.971 |
@@ -67,11 +81,22 @@
 | PixVerse | C1 | 有声 | 0.293 | 0.381 | 0.704 | 0.845 | 1.014 |
 | Mingmou | 1.0 | - | - | 0.300 | 0.500 | 0.750 | 1.120 |
 
+不按分辨率分档的官方价：
+
+| 厂商 | 模型 | 属性 | 单价 |
+| --- | --- | --- | --- |
+| Hailuo | H3 | 输入图片，5 张及以内免费，超出部分 | 0.2 元/张 |
+| GV | omni | 输入文本 | 11.25 元/百万 token |
+| GV | omni | 输出文本 | 67.5 元/百万 token |
+
+`Identifyface` 的 `0.100` 在官方表里落在 1080P 列。后面的表达式只覆盖第一节已接入的模型。未接入型号，以及 H3 的输入视频和超张图片，不写入表达式。
+
 说明：
 
 - 价格表达式默认按请求入参预扣。腾讯实际出账按输出视频秒数和实际落档结算，后台配置无法在预扣时读取腾讯回包中的最终落档。
-- 当前适配器里 Kling、Hailuo、Vidu、GV、OS 只会向腾讯传 720/768P 或 1080P 分辨率档；PixVerse 会传 540p/720p/1080p/2k/4k。表达式保留官方 2K/4K 分支，便于后续适配器放开分辨率后直接生效。
-- 视频时长读取 `duration`；缺省时长（不传 `duration`）各模型使用 API 官方默认值：Kling 为 5 秒，Hailuo 为 6 秒，Vidu / PixVerse 由 API 决定，GV 固定 8 秒，OS 为 8 秒，Hunyuan / Mingmou 不发送 Duration 字段。
+- 视频提交在跑表达式前，会把旧的 `size`、`metadata.resolution` 收拢进外层 `resolution`。表达式只读 `resolution`。
+- 视频时长读取 `duration`。不传时：Kling 按 5 秒，Hailuo 按 6 秒，Vidu / PixVerse 按 5 秒，GV 固定 8 秒，OS 按 8 秒。Hunyuan / Mingmou 不向腾讯发送 Duration，表达式仍按请求秒数预扣，缺省按 5 秒。
+- Hailuo 不再把时长收成 6 或 10。传了多少秒就按多少秒预扣；02、2.3、2.3-fast 的非法时长由上游拒绝。
 
 ---
 
@@ -103,11 +128,16 @@
 约合人民币 ≈ 预扣表达式值 ÷ 1,000,000 × 7.3
 ```
 
-**分辨率字段取值顺序：**
+**分辨率只读 `resolution`。** 视频提交在计价前已经把旧 `size`、`metadata.resolution` 收拢到这个字段。表达式不再读 `size`。`resolution` 为空或无法识别时，落到该模型的默认档（多数是 720P / 768P）。
 
-1. 优先读 `size`
-2. `size` 为空时读 `metadata.resolution`
-3. 两者都空 / 无法识别时，落到该模型的默认档（多数是 720P / 768P）
+**参考素材数 `metadata.content`。** 计价副本里的 `content` 已是归拢结果：图片不写 `role` 补成 `reference_image`，视频不写 `role` 补成 `reference_video`，旧的 `images`、`metadata.video_url` 也在这份列表里。数量写法：
+
+```text
+param("metadata.content.#(role==reference_image)#|#")
+param("metadata.content.#(role==reference_video)#|#")
+```
+
+没有这类素材时结果是 `nil` 或 `0`。首帧、尾帧不会计入。
 
 **有声判断统一规则：**
 
@@ -125,7 +155,7 @@
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 205479) : has(s, "2K") || has(s, "2k") ? tier("2K", 136986) : has(s, "1080") ? tier("1080P", 95890) : tier("720P", 54795);
 u * d
 ```
@@ -138,7 +168,7 @@ u * d
    - `d0 < 3` → `d = 3`
    - `d0 > 15` → `d = 15`
    - 其余 → `d = d0`
-3. **读分辨率字符串 `s`**：`size` 优先，否则 `metadata.resolution`。
+3. **读分辨率字符串 `s`**：只读 `resolution`。旧的 `size`、`metadata.resolution` 已在计价前收拢进来。
 4. **选单价 `u`**（按字符串包含关系匹配，优先级 4K > 2K > 1080 > 默认 720P）：
 
 | 命中档 | 官方元/秒 | 表达式单价 u |
@@ -154,8 +184,8 @@ u * d
 
 | 请求 | d | u | 表达式值 | 约合 RMB |
 | --- | ---: | ---: | ---: | ---: |
-| 不传 duration/size | 5 | 54795 | 273975 | ¥2.00 |
-| `duration=10, size=1080P` | 10 | 95890 | 958900 | ¥7.00 |
+| 不传 duration/resolution | 5 | 54795 | 273975 | ¥2.00 |
+| `duration=10, resolution=1080P` | 10 | 95890 | 958900 | ¥7.00 |
 
 ---
 
@@ -166,7 +196,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 205479) : has(s, "2K") || has(s, "2k") ? tier("2K", 136986) : has(s, "1080") ? tier("1080P", 95890) : tier("720P", 54795);
 u * d
 ```
@@ -182,7 +212,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 205479) : has(s, "2K") || has(s, "2k") ? tier("2K", 136986) : has(s, "1080") ? tier("1080P", 95890) : tier("720P", 54795);
 u * d
 ```
@@ -198,7 +228,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 153425) : has(s, "2K") || has(s, "2k") ? tier("2K", 102740) : has(s, "1080") ? tier("1080P", 68493) : tier("720P", 41096);
 u * d
 ```
@@ -227,7 +257,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let audio = param("metadata.audio_generation") == "Enabled";
 let u = audio ? (has(s, "4K") || has(s, "4k") ? tier("audio-4K", 308219) : has(s, "2K") || has(s, "2k") ? tier("audio-2K", 205479) : tier("audio-1080P", 136986)) : (has(s, "4K") || has(s, "4k") ? tier("silent-4K", 153425) : has(s, "2K") || has(s, "2k") ? tier("silent-2K", 102740) : has(s, "1080") ? tier("silent-1080P", 68493) : tier("silent-720P", 41096));
 u * d
@@ -265,8 +295,9 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
-let ref = param("images.#") != nil && param("images.#") > 0;
+let s = param("resolution");
+let vids = param("metadata.content.#(role==reference_video)#|#");
+let ref = vids != nil && vids > 0;
 let u = ref ? (has(s, "4K") || has(s, "4k") ? tier("ref-4K", 369863) : has(s, "2K") || has(s, "2k") ? tier("ref-2K", 246575) : has(s, "1080") ? tier("ref-1080P", 164384) : tier("ref-720P", 123288)) : (has(s, "4K") || has(s, "4k") ? tier("t2v-4K", 246575) : has(s, "2K") || has(s, "2k") ? tier("t2v-2K", 164384) : has(s, "1080") ? tier("t2v-1080P", 109589) : tier("t2v-720P", 82192));
 u * d
 ```
@@ -274,7 +305,7 @@ u * d
 **表达式解读：**
 
 1. **时长 `d`**：同 Kling（默认 5，3–15）。
-2. **分支 `ref`**：`images` 数组长度 > 0 → 有参考视频价，否则文生（t2v）价。
+2. **分支 `ref`**：`reference_video` 数量 > 0 → 有参考视频价，否则文生（t2v）价。只有参考图不算。
 3. **单价表**：
 
 | 分支 | 720P | 1080P | 2K | 4K |
@@ -285,7 +316,7 @@ u * d
 | 有参考 u | 123288 | 164384 | 246575 | 369863 |
 
 4. **结果**：`u * d`
-5. **示例**：无图默认 → `82192 × 5 = 410960`；有图 + 1080P × 10s → `164384 × 10 = 1643840`
+5. **示例**：无参考视频默认 → `82192 × 5 = 410960`；有参考视频 + 1080P × 10s → `164384 × 10 = 1643840`
 
 ---
 
@@ -296,7 +327,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let audio = param("metadata.audio_generation") == "Enabled";
 let u = audio ? (has(s, "4K") || has(s, "4k") ? tier("audio-4K", 410959) : has(s, "2K") || has(s, "2k") ? tier("audio-2K", 205479) : has(s, "1080") ? tier("audio-1080P", 164384) : tier("audio-720P", 123288)) : (has(s, "4K") || has(s, "4k") ? tier("silent-4K", 410959) : has(s, "2K") || has(s, "2k") ? tier("silent-2K", 136986) : has(s, "1080") ? tier("silent-1080P", 109589) : tier("silent-720P", 82192));
 u * d
@@ -327,9 +358,10 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 3 ? 3 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let audio = param("metadata.audio_generation") == "Enabled";
-let ref = param("images.#") != nil && param("images.#") > 0;
+let vids = param("metadata.content.#(role==reference_video)#|#");
+let ref = vids != nil && vids > 0;
 let u = ref ? (has(s, "4K") || has(s, "4k") ? tier("ref-4K", 273973) : has(s, "2K") || has(s, "2k") ? tier("ref-2K", 205479) : has(s, "1080") ? tier("ref-1080P", 164384) : tier("ref-720P", 123288)) : audio ? (has(s, "4K") || has(s, "4k") ? tier("audio-4K", 410959) : has(s, "2K") || has(s, "2k") ? tier("audio-2K", 164384) : has(s, "1080") ? tier("audio-1080P", 136986) : tier("audio-720P", 109589)) : (has(s, "4K") || has(s, "4k") ? tier("silent-4K", 410959) : has(s, "2K") || has(s, "2k") ? tier("silent-2K", 136986) : has(s, "1080") ? tier("silent-1080P", 109589) : tier("silent-720P", 82192));
 u * d
 ```
@@ -339,7 +371,7 @@ u * d
 这是计费变量最多的 Kling 模型，分支优先级：
 
 ```
-有参考图(ref) ？ → 走「有参考+无声」价表
+有参考视频(ref) ？ → 走「有参考+无声」价表
 否则有声(audio) ？ → 走「无参考+有声」价表
 否则 → 走「无参考+无声」价表
 ```
@@ -354,7 +386,7 @@ u * d
 
 - **时长**：同 Kling（默认 5，3–15）
 - **结果**：`u * d`
-- **示例**：无图无声默认 → `82192 × 5 = 410960`；有图 1080P × 5s → `164384 × 5 = 821920`
+- **示例**：无参考视频且无声 → `82192 × 5 = 410960`；有参考视频 1080P × 5s → `164384 × 5 = 821920`
 
 ---
 
@@ -365,8 +397,9 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 10 ? 10 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
-let ref = param("images.#") != nil && param("images.#") > 0;
+let s = param("resolution");
+let imgs = param("metadata.content.#(role==reference_image)#|#");
+let ref = imgs != nil && imgs > 0;
 let u = ref ? (has(s, "4K") || has(s, "4k") ? tier("ref-4K", 252740) : has(s, "2K") || has(s, "2k") ? tier("ref-2K", 168493) : has(s, "1080") ? tier("ref-1080P", 112329) : has(s, "540") || has(s, "480") ? tier("ref-540P", 32877) : tier("ref-720P", 43836)) : (has(s, "4K") || has(s, "4k") ? tier("t2v-4K", 143836) : has(s, "2K") || has(s, "2k") ? tier("t2v-2K", 95890) : has(s, "1080") ? tier("t2v-1080P", 64384) : tier("t2v-720P", 43836));
 u * d
 ```
@@ -378,7 +411,7 @@ u * d
    - `d0 < 1` → 1
    - `d0 > 10` → 10
    - 其余 → `d0`
-2. **分支 `ref`**：有 `images` → 参考生价，否则文生价。
+2. **分支 `ref`**：`reference_image` 数量 > 0 → 参考生价，否则文生价。只有首帧不算。
 3. **单价表**：
 
 | 分支 | 540P | 720P | 1080P | 2K | 4K |
@@ -395,23 +428,25 @@ u * d
 
 ### 任务 10：`vidu-video-q2-pro`
 
-默认图生/首尾帧生价；当 `metadata.input_usage == "Reference"` 时按参考生价。
+默认图生/首尾帧生价。有参考图或参考视频时按参考生价。
 
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 10 ? 10 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
-let ref = param("metadata.input_usage") == "Reference";
+let s = param("resolution");
+let imgs = param("metadata.content.#(role==reference_image)#|#");
+let vids = param("metadata.content.#(role==reference_video)#|#");
+let ref = (imgs != nil && imgs > 0) || (vids != nil && vids > 0);
 let u = ref ? (has(s, "4K") || has(s, "4k") ? tier("ref-4K", 277397) : has(s, "2K") || has(s, "2k") ? tier("ref-2K", 184932) : has(s, "1080") ? tier("ref-1080P", 123288) : has(s, "540") || has(s, "480") ? tier("ref-540P", 36986) : tier("ref-720P", 47945)) : (has(s, "4K") || has(s, "4k") ? tier("i2v-4K", 205479) : has(s, "2K") || has(s, "2k") ? tier("i2v-2K", 136986) : has(s, "1080") ? tier("i2v-1080P", 95890) : tier("i2v-720P", 47945));
 u * d
 ```
 
 **表达式解读：**
 
-与 q2 的关键差异：**不是看有没有图，而是看 `metadata.input_usage`**：
+与 q2 的差异：参考视频也走参考生。只有首帧或尾帧时仍走图生/首尾帧价。
 
-- `input_usage == "Reference"` → 参考生价（ref）
-- 否则（含不传）→ 图生/首尾帧价（i2v）
+- `reference_image` 或 `reference_video` 数量 > 0 → 参考生价（ref）
+- 否则 → 图生/首尾帧价（i2v）
 
 | 分支 | 540P | 720P | 1080P | 2K | 4K |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -421,7 +456,7 @@ u * d
 | ref u | 36986 | 47945 | 123288 | 184932 | 277397 |
 
 - **时长**：同 Vidu（默认 5，1–10）
-- **示例**：有图但不传 input_usage → i2v-720P：`47945 × 5 = 239725`；`input_usage=Reference` + 1080P × 8s → `123288 × 8 = 986304`
+- **示例**：只有首帧 → i2v-720P：`47945 × 5 = 239725`；参考图或参考视频 + 1080P × 8s → `123288 × 8 = 986304`
 
 ---
 
@@ -432,7 +467,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 10 ? 10 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 143836) : has(s, "2K") || has(s, "2k") ? tier("2K", 95890) : has(s, "1080") ? tier("1080P", 64384) : tier("720P", 34247);
 u * d
 ```
@@ -453,7 +488,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 10 ? 10 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 154384) : has(s, "2K") || has(s, "2k") ? tier("2K", 128630) : has(s, "1080") ? tier("1080P", 107123) : has(s, "540") || has(s, "480") ? tier("540P", 42877) : tier("720P", 85616);
 u * d
 ```
@@ -473,7 +508,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 10 ? 10 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 185068) : has(s, "2K") || has(s, "2k") ? tier("2K", 154247) : has(s, "1080") ? tier("1080P", 128493) : has(s, "540") || has(s, "480") ? tier("540P", 42877) : tier("720P", 107123);
 u * d
 ```
@@ -488,41 +523,43 @@ u * d
 
 ### 任务 14：`vidu-video-q3-turbo`
 
-图生、文生、首尾帧生价：540P `0.250`，720P `0.375`，1080P `0.438`，2K `0.526`，4K `0.631` 元/秒。
+图生、文生、首尾帧生价：540P `0.250`，720P `0.375`，1080P `0.438`，2K `0.526`，4K `0.631` 元/秒。参考生价：540P `0.125`，720P `0.313`，1080P `0.406`，2K `0.487`，4K `0.585` 元/秒。有参考图或参考视频时走参考生。
 
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 10 ? 10 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
-let u = has(s, "4K") || has(s, "4k") ? tier("4K", 86438) : has(s, "2K") || has(s, "2k") ? tier("2K", 72055) : has(s, "1080") ? tier("1080P", 60000) : has(s, "540") || has(s, "480") ? tier("540P", 34247) : tier("720P", 51370);
+let s = param("resolution");
+let imgs = param("metadata.content.#(role==reference_image)#|#");
+let vids = param("metadata.content.#(role==reference_video)#|#");
+let ref = (imgs != nil && imgs > 0) || (vids != nil && vids > 0);
+let u = ref ? (has(s, "4K") || has(s, "4k") ? tier("ref-4K", 80137) : has(s, "2K") || has(s, "2k") ? tier("ref-2K", 66712) : has(s, "1080") ? tier("ref-1080P", 55616) : has(s, "540") || has(s, "480") ? tier("ref-540P", 17123) : tier("ref-720P", 42877)) : (has(s, "4K") || has(s, "4k") ? tier("4K", 86438) : has(s, "2K") || has(s, "2k") ? tier("2K", 72055) : has(s, "1080") ? tier("1080P", 60000) : has(s, "540") || has(s, "480") ? tier("540P", 34247) : tier("720P", 51370));
 u * d
 ```
 
 **表达式解读：**
 
-- 无额外分支，仅分辨率分档。
-- **单价 u**：540P=34247，720P=51370，1080P=60000，2K=72055，4K=86438。
+- `reference_image` 或 `reference_video` 数量 > 0 → 参考生；否则图生、文生、首尾帧生。
+- **图生单价 u**：540P=34247，720P=51370，1080P=60000，2K=72055，4K=86438。
+- **参考生单价 u**：540P=17123，720P=42877，1080P=55616，2K=66712，4K=80137。
 - **示例**：720P × 5s → `51370 × 5 = 256850`
 
 ---
 
 ### 任务 15：`hailuo-video-02`
 
-官方价：768P `0.330`，1080P `0.580`，2K `0.930`，4K `1.490` 元/秒。海螺时长只支持 6 或 10 秒。
+官方价：768P `0.330`，1080P `0.580`，2K `0.930`，4K `1.490` 元/秒。不传时长按 6 秒；传了按请求秒数预扣。官方只接受 6 或 10，其它值由上游拒绝。
 
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
-let d = d0 <= 8 ? 6 : 10;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let d = d0 <= 0 ? 6 : d0;
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 204110) : has(s, "2K") || has(s, "2k") ? tier("2K", 127397) : has(s, "1080") ? tier("1080P", 79452) : tier("768P", 45205);
 u * d
 ```
 
 **表达式解读：**
 
-1. **时长 snap**（对齐适配器：`≤8 → 6`，否则 `10`）：
-   - 未传 `duration` 时 `d0=0 ≤ 8` → **默认 6 秒**
-   - `duration=10` → 10 秒
+1. **时长**：未传或 `≤0` → 6 秒；否则按请求秒数。不再收成 6/10。
 2. **分辨率**：含 `1080` → 1080P；含 2K/4K 对应档；否则默认 **768P**（不是 720P）。
 3. **单价**：768P=45205，1080P=79452，2K=127397，4K=204110。
 4. **示例**：默认 → `45205 × 6 = 271230`；1080P × 10s → `79452 × 10 = 794520`
@@ -535,8 +572,8 @@ u * d
 
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
-let d = d0 <= 8 ? 6 : 10;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let d = d0 <= 0 ? 6 : d0;
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 204110) : has(s, "2K") || has(s, "2k") ? tier("2K", 127397) : has(s, "1080") ? tier("1080P", 79452) : tier("768P", 45205);
 u * d
 ```
@@ -551,15 +588,15 @@ u * d
 
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
-let d = d0 <= 8 ? 6 : 10;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let d = d0 <= 0 ? 6 : d0;
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 119178) : has(s, "2K") || has(s, "2k") ? tier("2K", 79452) : has(s, "1080") ? tier("1080P", 52740) : tier("768P", 30822);
 u * d
 ```
 
 **表达式解读：**
 
-- **时长逻辑**：同 Hailuo（`≤8 → 6`，否则 10）。
+- **时长逻辑**：同 Hailuo 02，未传按 6 秒，传了按请求秒数。
 - **单价**：768P=30822，1080P=52740，2K=79452，4K=119178。
 - **示例**：默认 → `30822 × 6 = 184932`
 
@@ -571,7 +608,7 @@ GV 3.1 有声价：720P/1080P `3.000`，2K `3.750`，4K `4.500` 元/秒。无声
 
 ```text
 let d = 8;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let audio = param("metadata.audio_generation") == "Enabled";
 let u = audio ? (has(s, "4K") || has(s, "4k") ? tier("audio-4K", 616438) : has(s, "2K") || has(s, "2k") ? tier("audio-2K", 513699) : tier("audio-720_1080P", 410959)) : (has(s, "4K") || has(s, "4k") ? tier("silent-4K", 410959) : has(s, "2K") || has(s, "2k") ? tier("silent-2K", 308219) : tier("silent-720_1080P", 205479));
 u * d
@@ -600,7 +637,7 @@ GV 3.1-fast 有声价：720P/1080P `1.125`，2K `1.875`，4K `2.625` 元/秒。�
 
 ```text
 let d = 8;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let audio = param("metadata.audio_generation") == "Enabled";
 let u = audio ? (has(s, "4K") || has(s, "4k") ? tier("audio-4K", 359589) : has(s, "2K") || has(s, "2k") ? tier("audio-2K", 256849) : tier("audio-720_1080P", 154110)) : (has(s, "4K") || has(s, "4k") ? tier("silent-4K", 308219) : has(s, "2K") || has(s, "2k") ? tier("silent-2K", 205479) : tier("silent-720_1080P", 102740));
 u * d
@@ -622,12 +659,12 @@ u * d
 
 ### 任务 20：`sora-video-2.0`
 
-官方价：720P `0.750`，1080P `1.125`，2K `1.688`，4K `2.531` 元/秒。官方默认 8 秒；用户指定时 snap 到最近合法值 {4, 8, 12}。
+官方价：720P `0.750`，1080P `1.125`，2K `1.688`，4K `2.531` 元/秒。官方标注该版本于 2026-09-15 下架，单价仍按下表。官方默认 8 秒；用户指定时 snap 到最近合法值 {4, 8, 12}。
 
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 8 : (d0 <= 6 ? 4 : (d0 <= 10 ? 8 : 12));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 346712) : has(s, "2K") || has(s, "2k") ? tier("2K", 231233) : has(s, "1080") ? tier("1080P", 154110) : tier("720P", 102740);
 u * d
 ```
@@ -659,7 +696,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : d0;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 153425) : has(s, "2K") || has(s, "2k") ? tier("2K", 102740) : has(s, "1080") ? tier("1080P", 68493) : tier("720P", 41096);
 u * d
 ```
@@ -679,7 +716,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : d0;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 153425) : has(s, "2K") || has(s, "2k") ? tier("2K", 102740) : has(s, "1080") ? tier("1080P", 68493) : tier("720P", 41096);
 u * d
 ```
@@ -695,7 +732,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let u = has(s, "4K") || has(s, "4k") ? tier("4K", 140959) : has(s, "2K") || has(s, "2k") ? tier("2K", 100685) : has(s, "1080") ? tier("1080P", 71918) : has(s, "540") || has(s, "480") ? tier("540P", 33562) : tier("720P", 43151);
 u * d
 ```
@@ -705,7 +742,7 @@ u * d
 1. **时长**（PixVerse：1–15，默认 5）：`≤0→5`，`<1→1`，`>15→15`。
 2. **分辨率匹配顺序**：4K > 2K > 1080 > **540/480** > 默认 **720P**（与适配器 `defaultVideoResolution["PixVerse"]="720p"` 对齐）。
 3. **单价**：540P=33562，720P=43151，1080P=71918，2K=100685，4K=140959。
-4. **示例**：不传 size → 720P × 5s = `43151 × 5 = 215755`；若传 `540p` → `33562 × 5 = 167810`
+4. **示例**：不传 resolution → 720P × 5s = `43151 × 5 = 215755`；若传 `540p` → `33562 × 5 = 167810`
 
 ---
 
@@ -716,7 +753,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let audio = param("metadata.audio_generation") == "Enabled";
 let u = audio ? (has(s, "4K") || has(s, "4k") ? tier("audio-4K", 133014) : has(s, "2K") || has(s, "2k") ? tier("audio-2K", 110959) : has(s, "1080") ? tier("audio-1080P", 92466) : has(s, "540") || has(s, "480") ? tier("audio-540P", 36164) : tier("audio-720P", 48219)) : (has(s, "4K") || has(s, "4k") ? tier("silent-4K", 104110) : has(s, "2K") || has(s, "2k") ? tier("silent-2K", 86849) : has(s, "1080") ? tier("silent-1080P", 72329) : has(s, "540") || has(s, "480") ? tier("silent-540P", 28082) : tier("silent-720P", 36164));
 u * d
@@ -739,7 +776,7 @@ u * d
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
 let d = d0 <= 0 ? 5 : (d0 < 1 ? 1 : (d0 > 15 ? 15 : d0));
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
+let s = param("resolution");
 let audio = param("metadata.audio_generation") == "Enabled";
 let u = audio ? (has(s, "4K") || has(s, "4k") ? tier("audio-4K", 138904) : has(s, "2K") || has(s, "2k") ? tier("audio-2K", 115753) : has(s, "1080") ? tier("audio-1080P", 96438) : has(s, "540") || has(s, "480") ? tier("audio-540P", 40137) : tier("audio-720P", 52192)) : (has(s, "4K") || has(s, "4k") ? tier("silent-4K", 110000) : has(s, "2K") || has(s, "2k") ? tier("silent-2K", 91644) : has(s, "1080") ? tier("silent-1080P", 76301) : has(s, "540") || has(s, "480") ? tier("silent-540P", 32192) : tier("silent-720P", 40137));
 u * d
@@ -756,19 +793,28 @@ u * d
 
 ### 任务 26：`hailuo-video-h3`
 
-> ⚠️ **H3 官方价格尚未在腾讯文档中发布，以下表达式暂用 02/2.3 同档价格占位，配置前请先向腾讯确认 H3 正式定价，再更新对应数字。**
->
-> 临时占位价：768P `0.330`，1080P `0.580`，2K `0.930`，4K `1.490` 元/秒（与 02/2.3 相同）。时长 snap 到 {6, 10} 秒。
+输出视频：768P `0.500`，1080P `0.650`，2K `0.800`，4K `0.960` 元/秒。不传时长按 6 秒，传了按请求秒数。官方时长为 4–15 的整数。
+
+输入视频、超出 5 张的输入图片另计，未写入本表达式。
 
 ```text
 let d0 = param("duration") != nil ? int(param("duration")) : 0;
-let d = d0 <= 8 ? 6 : 10;
-let s = param("size") != nil ? param("size") : param("metadata.resolution");
-let u = has(s, "4K") || has(s, "4k") ? tier("4K", 204110) : has(s, "2K") || has(s, "2k") ? tier("2K", 127397) : has(s, "1080") ? tier("1080P", 79452) : tier("768P", 45205);
+let d = d0 <= 0 ? 6 : d0;
+let s = param("resolution");
+let u = has(s, "4K") || has(s, "4k") ? tier("4K", 131507) : has(s, "2K") || has(s, "2k") ? tier("2K", 109589) : has(s, "1080") ? tier("1080P", 89041) : tier("768P", 68493);
 u * d
 ```
 
-**表达式解读：** 计算逻辑与任务 15（`hailuo-video-02`）完全相同；数字为占位，正式定价公布后需整体替换单价表。
+**表达式解读：**
+
+| 命中档 | 官方元/秒 | 表达式单价 u |
+| --- | ---: | ---: |
+| 4K | 0.960 | 131507 |
+| 2K | 0.800 | 109589 |
+| 1080P | 0.650 | 89041 |
+| 768P（默认） | 0.500 | 68493 |
+
+- **示例**：不传参数 → `68493 × 6 = 410958` ≈ ¥3.00；1080P × 10 秒 → `89041 × 10 = 890410` ≈ ¥6.50
 
 ---
 
@@ -776,6 +822,7 @@ u * d
 
 - 平台后台选择「表达式/阶梯计费」，把对应模型的整段表达式整体复制进去。
 - 如果业务侧不传 `metadata.audio_generation`，有声/无声模型默认按无声价计费。需要精确计费时，调用方应传 `metadata.audio_generation: "Enabled"`。
-- 如果调用方传入 `size` 为像素值，例如 `1920x1080`，表达式只能通过字符串包含关系粗略识别 `1080`、`2K`、`4K`。当前后台表达式无法像 Go 代码一样计算短边落档。
+- 视频计价副本上的 `resolution` 已是分辨率档。旧请求里的 `1920x1080` 会先收成 `1080p` 再参与表达式，不用在表达式里拆宽高。
+- 视频计价副本上的 `metadata.content` 已补好 `role`。参考图、参考视频用上面的数量表达式判断，不要再读 `images` 或 `metadata.input_usage`。
 - Hunyuan、Mingmou 适配器不向腾讯发送 `Duration`/`Resolution` 字段，表达式按请求意图预扣；任务完成后系统会按实际输出时长（MetaData.Duration）做多退少补，分辨率部分仍按请求档位计。
 - 看不懂某条表达式时：先看「三、表达式通用解读」，再看该模型任务下的「表达式解读」——通常只要弄清 **d（秒数）怎么来、有没有 audio/ref 分支、u 命中哪一档**。

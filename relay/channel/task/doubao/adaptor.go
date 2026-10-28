@@ -53,14 +53,14 @@ type DraftTask struct {
 }
 
 type requestPayload struct {
-	Model                  string         `json:"model"`
-	Content                []ContentItem  `json:"content,omitempty"`
-	CallbackURL            string         `json:"callback_url,omitempty"`
-	ReturnLastFrame        *dto.BoolValue `json:"return_last_frame,omitempty"`
-	ServiceTier            string         `json:"service_tier,omitempty"`
-	ExecutionExpiresAfter  *dto.IntValue  `json:"execution_expires_after,omitempty"`
-	GenerateAudio          *dto.BoolValue `json:"generate_audio,omitempty"`
-	Draft                 *dto.BoolValue `json:"draft,omitempty"`                   // Seedance 2.5：样片模式
+	Model                 string         `json:"model"`
+	Content               []ContentItem  `json:"content,omitempty"`
+	CallbackURL           string         `json:"callback_url,omitempty"`
+	ReturnLastFrame       *dto.BoolValue `json:"return_last_frame,omitempty"`
+	ServiceTier           string         `json:"service_tier,omitempty"`
+	ExecutionExpiresAfter *dto.IntValue  `json:"execution_expires_after,omitempty"`
+	GenerateAudio         *dto.BoolValue `json:"generate_audio,omitempty"`
+	Draft                 *dto.BoolValue `json:"draft,omitempty"`                    // Seedance 2.5：样片模式
 	OmniReferenceTaskType string         `json:"omni_reference_task_type,omitempty"` // Seedance 2.5：auto/reference/edit/extend
 	OutputFormat          string         `json:"output_format,omitempty"`            // Seedance 2.5：mp4/mov
 	Tools                 []struct {
@@ -160,24 +160,20 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil
 	}
+	relaycommon.NormalizeVideoResolutionRatio(&req)
 
 	otherRatios := make(map[string]float64)
 
-	if hasVideoInMetadata(req.Metadata) {
+	if normalizedContentHasVideo(taskcommon.NormalizeVideoContent(req)) {
 		if ratio, ok := GetVideoInputRatio(info.OriginModelName); ok {
 			otherRatios["video_input"] = ratio
 		}
 	}
 
-	// 读取 resolution：metadata 为低优先级，size 为高优先级，与 convertToRequestPayload 逻辑一致
-	resolution := ""
-	if req.Metadata != nil {
-		resolution, _ = req.Metadata["resolution"].(string)
-	}
-	if req.Size != "" {
-		if res := doubaoResolutionFromSize(req.Size); res != "" {
-			resolution = res
-		}
+	// 分辨率只读收拢后的外层 resolution。
+	resolution := doubaoResolutionFromSize(req.Resolution)
+	if resolution == "" {
+		resolution = strings.TrimSpace(req.Resolution)
 	}
 	if resolution != "" {
 		if resRatio, ok := GetResolutionRatio(info.OriginModelName, resolution); ok {
@@ -185,7 +181,8 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 
-	// 若模型支持有声/无声区分，且请求未开启音频，则应用无声折扣
+	// 若模型支持有声/无声区分，且明确关闭音频，则应用无声折扣。
+	// 不传 generate_audio 时按火山默认有声，不打折。
 	if ratio, ok := GetSilentVideoRatio(info.OriginModelName); ok {
 		if !hasAudioInMetadata(req.Metadata) {
 			otherRatios["silent_video"] = ratio
@@ -198,44 +195,24 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	return otherRatios
 }
 
-// hasVideoInMetadata 直接检查 metadata 的 content 数组是否包含 video_url 条目，
-// 避免构建完整的上游 requestPayload。
-func hasVideoInMetadata(metadata map[string]interface{}) bool {
-	if metadata == nil {
-		return false
-	}
-	contentRaw, ok := metadata["content"]
-	if !ok {
-		return false
-	}
-	contentSlice, ok := contentRaw.([]interface{})
-	if !ok {
-		return false
-	}
-	for _, item := range contentSlice {
-		itemMap, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if itemMap["type"] == "video_url" {
-			return true
-		}
-		if _, has := itemMap["video_url"]; has {
+func normalizedContentHasVideo(items []taskcommon.VideoContentItem) bool {
+	for _, item := range items {
+		if item.Type == taskcommon.VideoContentVideo && strings.TrimSpace(item.URL) != "" {
 			return true
 		}
 	}
 	return false
 }
 
-// hasAudioInMetadata 检测 metadata 中 generate_audio 是否明确设置为 true。
-// 若字段缺失或为 false，则视为无声视频请求。
+// hasAudioInMetadata 判断这次请求是否按有声视频计费。
+// 火山默认 generate_audio=true。字段缺失时按有声；只有明确为 false 时才按无声。
 func hasAudioInMetadata(metadata map[string]interface{}) bool {
 	if metadata == nil {
-		return false
+		return true
 	}
 	val, ok := metadata["generate_audio"]
 	if !ok {
-		return false
+		return true
 	}
 	switch v := val.(type) {
 	case bool:
@@ -247,6 +224,11 @@ func hasAudioInMetadata(metadata map[string]interface{}) bool {
 		}
 	}
 	return false
+}
+
+// durationSpecified 表示调用方显式给了时长。0 是未设置，-1 是火山智能时长。
+func durationSpecified(sec int) bool {
+	return sec > 0 || sec == -1
 }
 
 // BuildRequestBody converts request into Doubao specific format.
@@ -357,43 +339,33 @@ func (a *TaskAdaptor) GetChannelName() string {
 
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, error) {
 	r := requestPayload{
-		Model:   req.Model,
-		Content: []ContentItem{},
-	}
-
-	// Add images if present
-	if req.HasImage() {
-		for _, imgURL := range req.Images {
-			r.Content = append(r.Content, ContentItem{
-				Type: "image_url",
-				ImageURL: &MediaURL{
-					URL: imgURL,
-				},
-			})
-		}
+		Model: req.Model,
 	}
 
 	metadata := req.Metadata
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	relaycommon.NormalizeVideoResolutionRatio(req)
+	r.Content = doubaoContentFromNormalized(taskcommon.NormalizeVideoContent(*req))
 
-	// size 覆盖 metadata（高优先级），仅当 size 能推导出有效值时才覆盖
-	if req.Size != "" {
-		if res := doubaoResolutionFromSize(req.Size); res != "" {
-			r.Resolution = res
-		}
-		if rat := doubaoRatioFromSize(req.Size); rat != "" {
-			r.Ratio = rat
-		}
+	// 视频只读外层 resolution、ratio。size 与 metadata 里的同名字段已收拢。
+	if res := doubaoResolutionFromSize(req.Resolution); res != "" {
+		r.Resolution = res
+	} else if strings.TrimSpace(req.Resolution) != "" {
+		r.Resolution = strings.TrimSpace(req.Resolution)
+	}
+	if strings.TrimSpace(req.Ratio) != "" {
+		r.Ratio = strings.TrimSpace(req.Ratio)
 	}
 
 	// duration 优先级：seconds（OpenAI 风格）> duration（标准字段）> metadata（已在上方 UnmarshalMetadata 处理）
 	// 显式指定 duration 时清除 frames，避免上游 API 因 frames 优先级更高而忽略 duration。
-	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
+	// -1 是火山的智能时长，视频编辑必须传 -1，不能当成未设置丢掉。
+	if sec, err := strconv.Atoi(req.Seconds); err == nil && durationSpecified(sec) {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
 		r.Frames = nil
-	} else if req.Duration > 0 {
+	} else if durationSpecified(req.Duration) {
 		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
 		r.Frames = nil
 	}
@@ -424,6 +396,65 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	return &r, nil
+}
+
+func doubaoContentFromNormalized(items []taskcommon.VideoContentItem) []ContentItem {
+	content := make([]ContentItem, 0, len(items))
+	for _, item := range items {
+		role := item.Role
+		switch item.Type {
+		case taskcommon.VideoContentImage:
+			if strings.TrimSpace(item.URL) == "" {
+				continue
+			}
+			if role == "" {
+				role = taskcommon.VideoRoleReferenceImage
+			}
+			content = append(content, ContentItem{
+				Type:     item.Type,
+				Role:     role,
+				ImageURL: &MediaURL{URL: item.URL},
+			})
+		case taskcommon.VideoContentVideo:
+			if strings.TrimSpace(item.URL) == "" {
+				continue
+			}
+			if role == "" {
+				role = taskcommon.VideoRoleReferenceVideo
+			}
+			content = append(content, ContentItem{
+				Type:     item.Type,
+				Role:     role,
+				VideoURL: &MediaURL{URL: item.URL},
+			})
+		case taskcommon.VideoContentAudio:
+			if strings.TrimSpace(item.URL) == "" {
+				continue
+			}
+			if role == "" {
+				role = taskcommon.VideoRoleReferenceAudio
+			}
+			content = append(content, ContentItem{
+				Type:     item.Type,
+				Role:     role,
+				AudioURL: &MediaURL{URL: item.URL},
+			})
+		case taskcommon.VideoContentText:
+			if strings.TrimSpace(item.Text) == "" {
+				continue
+			}
+			content = append(content, ContentItem{Type: item.Type, Text: item.Text})
+		case taskcommon.VideoContentDraft:
+			if item.DraftTaskID == "" {
+				continue
+			}
+			content = append(content, ContentItem{
+				Type:      item.Type,
+				DraftTask: &DraftTask{ID: item.DraftTaskID},
+			})
+		}
+	}
+	return content
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
@@ -513,7 +544,7 @@ func doubaoResolutionFromSize(size string) string {
 	// "Np" 格式：直接映射
 	switch size {
 	case "4k", "2160p":
-		return "4K"
+		return "4k"
 	case "1080p":
 		return "1080p"
 	case "720p":
@@ -538,7 +569,7 @@ func doubaoResolutionFromSize(size string) string {
 	}
 	switch {
 	case short >= 2160:
-		return "4K"
+		return "4k"
 	case short >= 1080:
 		return "1080p"
 	case short >= 720:

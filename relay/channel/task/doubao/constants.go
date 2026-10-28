@@ -36,12 +36,12 @@ var ChannelName = "doubao-video"
 // 系统在检测到视频输入时自动乘以此折扣。
 // doubao-* 为火山引擎（国内），dreamina-* 为 BytePlus（国际），底层同款模型，折扣比率相同。
 var videoInputRatioMap = map[string]float64{
-	"doubao-seedance-2-0-260128":          28.0 / 46.0, // ~0.6087
-	"doubao-seedance-2-0-fast-260128":     22.0 / 37.0, // ~0.5946
-	"doubao-seedance-2-0-mini-260615":     14.0 / 23.0, // ~0.6087
-	"doubao-seedance-2-5-260628":          42.0 / 70.0, // 0.6；480P/720P 同价，含视频/不含视频
-	"dreamina-seedance-2-0-260128":        28.0 / 46.0, // ~0.6087 (BytePlus)
-	"dreamina-seedance-2-0-fast-260128":   22.0 / 37.0, // ~0.5946 (BytePlus)
+	"doubao-seedance-2-0-260128":        28.0 / 46.0, // ~0.6087
+	"doubao-seedance-2-0-fast-260128":   22.0 / 37.0, // ~0.5946
+	"doubao-seedance-2-0-mini-260615":   14.0 / 23.0, // ~0.6087
+	"doubao-seedance-2-5-260628":        42.0 / 70.0, // 0.6；480P/720P 同价，含视频/不含视频
+	"dreamina-seedance-2-0-260128":      28.0 / 46.0, // ~0.6087 (BytePlus)
+	"dreamina-seedance-2-0-fast-260128": 22.0 / 37.0, // ~0.5946 (BytePlus)
 }
 
 func GetVideoInputRatio(modelName string) (float64, bool) {
@@ -61,11 +61,29 @@ var resolutionRatioMap = map[string]float64{
 }
 
 func GetResolutionRatio(modelName string, resolution string) (float64, bool) {
+	resolution = canonicalResolutionKey(resolution)
 	if resolution == "" {
 		return 0, false
 	}
 	r, ok := resolutionRatioMap[modelName+":"+resolution]
 	return r, ok
+}
+
+// canonicalResolutionKey 把调用方的 4k / 4K / 1080P 收成计费表里的 key。
+// 上游分辨率仍用官方小写 4k；计费表历史 key 是 4K。
+func canonicalResolutionKey(resolution string) string {
+	switch strings.ToLower(strings.TrimSpace(resolution)) {
+	case "4k", "2160p":
+		return "4K"
+	case "1080p":
+		return "1080p"
+	case "720p":
+		return "720p"
+	case "480p":
+		return "480p"
+	default:
+		return strings.TrimSpace(resolution)
+	}
 }
 
 // silentVideoRatioMap 无声视频折扣比率（无声单价 / 有声单价）。

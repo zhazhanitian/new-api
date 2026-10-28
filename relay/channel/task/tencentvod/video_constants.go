@@ -162,7 +162,7 @@ func getVideoModelVersion(originModelName string) string {
 // Rules by ModelName:
 //
 //	Kling:   clamp to [3, 15]; 0 means "use API default (5)"
-//	Hailuo:  snap to nearest of {6, 10}
+//	Hailuo:  forward the requested duration; 0 means "use API default (6)"
 //	Vidu:    clamp to [1, 10]
 //	GV(Veo): always 8 (only legal value), ignore user input
 //	OS(Sora): snap to nearest of {4, 8, 12}; 0 means "use API default (8)"
@@ -176,11 +176,12 @@ func getVideoDuration(tencentModelName string, requestedSeconds float64) float64
 		}
 		return clampF(requestedSeconds, 3, 15)
 	case "Hailuo":
-		// Only {6, 10} are legal
-		if requestedSeconds <= 8 {
-			return 6
+		// Do not snap. H3 accepts 4–15; other versions accept 6 or 10.
+		// Illegal values are rejected by Tencent and returned as-is.
+		if requestedSeconds <= 0 {
+			return 0
 		}
-		return 10
+		return requestedSeconds
 	case "Vidu":
 		if requestedSeconds <= 0 {
 			return 0
@@ -281,6 +282,11 @@ func getVideoResolution(tencentModelName, size string) string {
 		}
 	}
 
+	// Hailuo H3 also accepts 2K/4K. Do not snap an explicit value onto 768P/1080P.
+	if tencentModelName == "Hailuo" && normalized != "" {
+		return normalized
+	}
+
 	// Nearest match (by resolution order index)
 	return nearestResolution(normalized, validList, def, isPixVerse)
 }
@@ -334,117 +340,6 @@ func nearestResolution(target string, validList []string, def string, pixverse b
 	return best
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// AspectRatio constraints per ModelName (and version for Vidu)
-// ──────────────────────────────────────────────────────────────────────────────
-
-// validVideoAspectRatios lists legal AspectRatio values.
-// Keyed by "ModelName" or "ModelName/ModelVersion" for version-specific overrides.
-var validVideoAspectRatios = map[string][]string{
-	"Kling":    {"16:9", "9:16", "1:1"},
-	"Vidu":     {"16:9", "9:16", "1:1"},   // default for all Vidu versions except q2
-	"Vidu/q2":  {"16:9", "9:16", "4:3", "3:4", "1:1"},
-	"GV":       {"16:9", "9:16"},
-	"OS":       {"16:9", "9:16"},
-	"PixVerse": {"16:9", "4:3", "1:1", "3:4", "9:16", "2:3", "3:2", "21:9"},
-	// Hailuo: does not support AspectRatio (do not send)
-	// Hunyuan: not documented (do not send)
-	// Mingmou: not documented (do not send)
-}
-
-// videoAspectRatioFloat is a shared float lookup for nearest-neighbor matching.
-var videoAspectRatioFloat = map[string]float64{
-	"1:1":  1.0,
-	"2:3":  2.0 / 3.0,
-	"3:2":  3.0 / 2.0,
-	"3:4":  3.0 / 4.0,
-	"4:3":  4.0 / 3.0,
-	"9:16": 9.0 / 16.0,
-	"16:9": 16.0 / 9.0,
-	"21:9": 21.0 / 9.0,
-}
-
-// getVideoAspectRatio converts a size string to the model-specific AspectRatio value.
-//
-// Returns "" if the model does not support AspectRatio (Hailuo, Hunyuan, Mingmou),
-// or if the call site determines AspectRatio should be suppressed (e.g. Kling i2v).
-//
-// size formats accepted:
-//   - ""       → model default ("16:9" for most)
-//   - "W:H"    → direct use with validation
-//   - "WxH"    → compute ratio and nearest-neighbor match
-func getVideoAspectRatio(tencentModelName, modelVersion, size string) string {
-	// Models that do not support AspectRatio
-	switch tencentModelName {
-	case "Hailuo", "Hunyuan", "Mingmou":
-		return ""
-	}
-
-	// Look up the valid list; Vidu q2 has a wider list than other Vidu versions
-	key := tencentModelName
-	if tencentModelName == "Vidu" && modelVersion == "q2" {
-		key = "Vidu/q2"
-	}
-	validList, ok := validVideoAspectRatios[key]
-	if !ok {
-		return ""
-	}
-
-	if size == "" || size == "auto" {
-		return "16:9"
-	}
-
-	// Direct ratio string (e.g. "16:9")
-	if strings.Contains(size, ":") && !strings.Contains(size, "x") {
-		for _, v := range validList {
-			if v == size {
-				return v
-			}
-		}
-		// Not in list: nearest neighbor
-		return nearestAspectRatio(size, validList)
-	}
-
-	// Pixel dimensions (e.g. "1920x1080")
-	if strings.Contains(size, "x") {
-		parts := strings.SplitN(size, "x", 2)
-		if len(parts) == 2 {
-			w := parseFloatSafe(parts[0])
-			h := parseFloatSafe(parts[1])
-			if h > 0 {
-				return nearestAspectRatioFloat(w/h, validList)
-			}
-		}
-	}
-
-	return "16:9"
-}
-
-// nearestAspectRatio finds the closest value from validList to the given ratio string.
-func nearestAspectRatio(target string, validList []string) string {
-	targetF, ok := videoAspectRatioFloat[target]
-	if !ok {
-		return "16:9"
-	}
-	return nearestAspectRatioFloat(targetF, validList)
-}
-
-// nearestAspectRatioFloat finds the closest value from validList to the given float ratio.
-func nearestAspectRatioFloat(targetRatio float64, validList []string) string {
-	best := "16:9"
-	bestDiff := math.MaxFloat64
-	for _, v := range validList {
-		if f, ok := videoAspectRatioFloat[v]; ok {
-			diff := math.Abs(f - targetRatio)
-			if diff < bestDiff {
-				bestDiff = diff
-				best = v
-			}
-		}
-	}
-	return best
-}
-
 // getBillingDuration returns the effective duration (seconds) that the pricing
 // expression used for pre-charge. It converts getVideoDuration's "0 = use API
 // default" sentinel into the concrete default value that the expression applies.
@@ -456,7 +351,7 @@ func nearestAspectRatioFloat(targetRatio float64, validList []string) string {
 // Model rules:
 //
 //	Kling:    sentDur=0 → 5 (expression default)
-//	Hailuo:   always non-zero (snapped to 6 or 10); handled by sentDur>0 path
+//	Hailuo:   sentDur=0 → 6 (API default). An explicit duration is billed as sent.
 //	Vidu:     sentDur=0 → 5 (expression default)
 //	GV:       always 8 (only legal value)
 //	OS(Sora): sentDur=0 → 8 (expression default)
@@ -482,6 +377,8 @@ func getBillingDuration(tencentModelName string, sentDur, requestedDur float64) 
 		return 8 // always sends 8; sentDur>0 path normally handles it
 	case "PixVerse":
 		return 5 // expression: d0 <= 0 ? 5
+	case "Hailuo":
+		return 6 // API default when Duration is omitted
 	case "Hunyuan", "Mingmou":
 		// Adapter does not send Duration to Tencent; expression bills the request intent:
 		//   let d = d0 <= 0 ? 5 : d0
@@ -491,22 +388,8 @@ func getBillingDuration(tencentModelName string, sentDur, requestedDur float64) 
 		}
 		return requestedDur
 	default:
-		// Hailuo: always returns 6 or 10 from getVideoDuration, never reaches here.
 		return 0
 	}
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// AudioGeneration support per ModelName
-// ──────────────────────────────────────────────────────────────────────────────
-
-// audioGenerationSupported returns true if the model supports AudioGeneration.
-func audioGenerationSupported(tencentModelName string) bool {
-	switch tencentModelName {
-	case "GV", "OS", "Vidu", "Kling":
-		return true
-	}
-	return false
 }
 
 // frameInterpolateSupported returns true if the model supports FrameInterpolate.
@@ -569,10 +452,4 @@ func parseIntSafe(s string) int {
 		}
 	}
 	return n
-}
-
-func parseFloatSafe(s string) float64 {
-	s = strings.TrimSpace(s)
-	// simple integer parse is sufficient for WxH pixel dimensions
-	return float64(parseIntSafe(s))
 }

@@ -1,5 +1,7 @@
 # 豆包 Seedance 2.5 价格验证测试参数
 
+> 本文件仍是旧请求（`size`、`images`、`metadata.ratio`），不要再拿来测。请用 [`豆包Seedance视频模型测试参数.md`](./豆包Seedance视频模型测试参数.md)。
+
 > **模型正式 ID**：`doubao-seedance-2-5-260628`（结算必须用此 ID；短名 `doubao-seedance-2.5` 仅影响广场展示）  
 > **接口**：`POST /v1/video/generations`，轮询 `GET /v1/video/generations/{task_id}`  
 > **计费方式**：按上游返回的 **Token 用量** × 有效输入单价（$/1M tokens）结算；后台只配一档基准价，请求时自动叠 `OtherRatios`。

@@ -104,7 +104,7 @@ type videoFileInfo struct {
 	Type          string `json:"Type,omitempty"`          // [shared] "Url" | "File"
 	FileId        string `json:"FileId,omitempty"`        // [shared] VOD file ID (not exposed externally)
 	Url           string `json:"Url,omitempty"`           // [shared] external URL
-	Category      string `json:"Category,omitempty"`      // [video-only] "Image" | "Video"
+	Category      string `json:"Category,omitempty"`      // [video-only] "Image" | "Video" | "Audio"
 	ReferenceType string `json:"ReferenceType,omitempty"` // [video-only] GV:"asset"/"style"; Kling+Video:"feature"/"base"; PixVerse:"subject"/"background"
 	Usage         string `json:"Usage,omitempty"`         // [video-only] "FirstFrame" | "Reference" | "LastFrame"
 	Text          string `json:"Text,omitempty"`          // [video-only] PixVerse multi-subject: name referenced in Prompt with @name
@@ -119,7 +119,7 @@ type videoFileInfo struct {
 type videoOutputConfig struct {
 	Duration         float64 `json:"Duration,omitempty"`         // [video-only] seconds; per-model constraints apply
 	Resolution       string  `json:"Resolution,omitempty"`       // [shared concept] differs from image side (see per-model table)
-	AspectRatio      string  `json:"AspectRatio,omitempty"`      // [shared concept] Hailuo does not support it
+	AspectRatio      string  `json:"AspectRatio,omitempty"`      // [shared concept] Hailuo only when the caller passes a ratio
 	AudioGeneration  string  `json:"AudioGeneration,omitempty"`  // [video-only] "Enabled"/"Disabled"; GV/OS/Vidu/Kling only
 	EnhanceSwitch    string  `json:"EnhanceSwitch,omitempty"`    // [video-only] "Enabled"/"Disabled"; video super-resolution
 	FrameInterpolate string  `json:"FrameInterpolate,omitempty"` // [video-only] "Enabled"/"Disabled"; Vidu-exclusive
@@ -139,12 +139,12 @@ type createVideoTaskRequest struct {
 	NegativePrompt string             `json:"NegativePrompt,omitempty"`
 	EnhancePrompt  string             `json:"EnhancePrompt,omitempty"`
 	FileInfos      []videoFileInfo    `json:"FileInfos,omitempty"`
-	LastFrameUrl   string             `json:"LastFrameUrl,omitempty"`  // [video-only]
+	LastFrameUrl   string             `json:"LastFrameUrl,omitempty"` // [video-only]
 	OutputConfig   *videoOutputConfig `json:"OutputConfig,omitempty"`
 	Seed           int64              `json:"Seed,omitempty"`
 	SceneType      string             `json:"SceneType,omitempty"`
 	ExtInfo        string             `json:"ExtInfo,omitempty"`
-	InputRegion    string             `json:"InputRegion,omitempty"`   // [video-only] "Mainland"/"Oversea"
+	InputRegion    string             `json:"InputRegion,omitempty"` // [video-only] "Mainland"/"Oversea"
 }
 
 // videoTaskMetadata holds video-specific fields decoded from TaskSubmitReq.Metadata.
@@ -158,27 +158,12 @@ type videoTaskMetadata struct {
 	NegativePrompt string `json:"negative_prompt"`
 	EnhancePrompt  string `json:"enhance_prompt"`
 	SceneType      string `json:"scene_type"`
-	ExtInfo        string `json:"ext_info"`
 
 	// [video-only]
-	AudioGeneration  string `json:"audio_generation"`   // "Enabled"/"Disabled"
-	EnhanceSwitch    string `json:"enhance_switch"`     // "Enabled"/"Disabled"
-	FrameInterpolate string `json:"frame_interpolate"`  // "Enabled"/"Disabled"; Vidu only
-	LastFrame        string `json:"last_frame"`         // tail-frame image URL
-	Resolution       string `json:"resolution"`         // fallback resolution (overridden by size)
-	InputRegion      string `json:"input_region"`       // "Mainland"/"Oversea"
-	ReferenceType    string `json:"reference_type"`
-	InputUsage       string `json:"input_usage"`        // force "Reference" mode for single image
-	VideoURL         string `json:"video_url"`          // video reference/edit input
-	// PixVerse multi-subject: JSON array [{"url":"...","type":"subject","name":"小猫"}]
-	PixverseSubjects string `json:"pixverse_subjects"`
-}
-
-// pixverseSubjectItem is one entry in the pixverse_subjects JSON array.
-type pixverseSubjectItem struct {
-	URL  string `json:"url"`
-	Type string `json:"type"` // "subject" or "background"
-	Name string `json:"name"`
+	AudioGeneration  string `json:"audio_generation"`  // "Enabled"/"Disabled"
+	EnhanceSwitch    string `json:"enhance_switch"`    // "Enabled"/"Disabled"
+	FrameInterpolate string `json:"frame_interpolate"` // "Enabled"/"Disabled"; Vidu only
+	Resolution       string `json:"resolution"`        // fallback resolution when size is empty or an aspect ratio
 }
 
 // ── Video response struct ─────────────────────────────────────────────────────
@@ -541,12 +526,55 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return bytes.NewReader(data), nil
 }
 
+func videoFileInfosFromContent(items []taskcommon.VideoContentItem) []videoFileInfo {
+	fileInfos := make([]videoFileInfo, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item.URL) == "" {
+			continue
+		}
+		info := videoFileInfo{Type: "Url", Url: item.URL}
+		switch item.Type {
+		case taskcommon.VideoContentImage:
+			info.Category = "Image"
+			switch item.Role {
+			case taskcommon.VideoRoleFirstFrame:
+				info.Usage = "FirstFrame"
+			case taskcommon.VideoRoleLastFrame:
+				info.Usage = "LastFrame"
+			default:
+				info.Usage = "Reference"
+				info.ReferenceType = item.ReferenceType
+				info.Text = item.Name
+			}
+		case taskcommon.VideoContentVideo:
+			info.Category = "Video"
+			if item.Role == taskcommon.VideoRoleFirstFrame {
+				info.Usage = "FirstFrame"
+			} else if item.Role == taskcommon.VideoRoleLastFrame {
+				info.Usage = "LastFrame"
+			} else {
+				info.Usage = "Reference"
+				info.ReferenceType = item.ReferenceType
+			}
+		case taskcommon.VideoContentAudio:
+			info.Category = "Audio"
+			info.Usage = "Reference"
+		default:
+			continue
+		}
+		fileInfos = append(fileInfos, info)
+	}
+	return fileInfos
+}
+
 // buildVideoRequestBody constructs the CreateAigcVideoTask JSON request body.
 func (a *TaskAdaptor) buildVideoRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
 	taskReq, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil, err
 	}
+	// 视频只使用外层 resolution、ratio。size 与 metadata 里的同名字段已在这里收拢。
+	relaycommon.NormalizeVideoResolutionRatio(&taskReq)
 
 	var meta videoTaskMetadata
 	_ = taskcommon.UnmarshalMetadata(taskReq.Metadata, &meta)
@@ -555,19 +583,18 @@ func (a *TaskAdaptor) buildVideoRequestBody(c *gin.Context, info *relaycommon.Re
 	tencentModelName := getVideoModelName(lookupModel)
 	modelVersion := getVideoModelVersion(lookupModel)
 
+	seed := meta.Seed
+	if taskReq.Seed != nil {
+		seed = int64(*taskReq.Seed)
+	}
 	body := createVideoTaskRequest{
 		SubAppId:       a.subAppId,
 		ModelName:      tencentModelName,
 		ModelVersion:   modelVersion,
 		Prompt:         taskReq.Prompt,
-		Seed:           meta.Seed,
+		Seed:           seed,
 		NegativePrompt: meta.NegativePrompt,
 		EnhancePrompt:  meta.EnhancePrompt,
-	}
-
-	// ── ExtInfo ────────────────────────────────────────────────────────────────
-	if meta.ExtInfo != "" {
-		body.ExtInfo = meta.ExtInfo
 	}
 
 	// ── SceneType (Kling / Vidu only; warn and drop for unsupported models) ───
@@ -578,11 +605,6 @@ func (a *TaskAdaptor) buildVideoRequestBody(c *gin.Context, info *relaycommon.Re
 			common.SysLog(fmt.Sprintf("[TencentVOD] video BuildRequestBody: model %s does not support SceneType=%s, ignoring",
 				tencentModelName, meta.SceneType))
 		}
-	}
-
-	// ── InputRegion ────────────────────────────────────────────────────────────
-	if meta.InputRegion != "" {
-		body.InputRegion = meta.InputRegion
 	}
 
 	// ── OutputConfig ───────────────────────────────────────────────────────────
@@ -604,37 +626,15 @@ func (a *TaskAdaptor) buildVideoRequestBody(c *gin.Context, info *relaycommon.Re
 	// 记录预扣计费时长：表达式里用的有效时长（0→各模型默认值），用于任务完成后多退少补。
 	info.BilledDurationSec = getBillingDuration(tencentModelName, dur, requestedDur)
 
-	// Resolution: size > metadata.resolution
-	sizeHint := taskReq.Size
-	if sizeHint == "" {
-		sizeHint = meta.Resolution
-	}
-	res := getVideoResolution(tencentModelName, sizeHint)
+	// 分辨率只读收拢后的外层 resolution，不再读 size。
+	res := getVideoResolution(tencentModelName, taskReq.Resolution)
 	if res != "" {
 		cfg.Resolution = res
 		hasConfig = true
 	}
 
-	// AspectRatio: only when there are no input images (i2v suppresses AspectRatio for Kling)
-	// We resolve this after building FileInfos; store temporarily.
-	willHaveFileInfos := len(taskReq.Images) > 0 || meta.VideoURL != "" || meta.PixverseSubjects != ""
-
-	var aspectRatioForKling string
-	if tencentModelName == "Kling" && willHaveFileInfos {
-		// Kling i2v: aspect ratio is determined by the first frame image, do not send AspectRatio.
-		aspectRatioForKling = ""
-	} else {
-		ar := getVideoAspectRatio(tencentModelName, modelVersion, taskReq.Size)
-		if ar != "" {
-			cfg.AspectRatio = ar
-			hasConfig = true
-		}
-		aspectRatioForKling = ar
-	}
-	_ = aspectRatioForKling // used above; suppress unused warning
-
-	// AudioGeneration
-	if meta.AudioGeneration != "" && audioGenerationSupported(tencentModelName) {
+	// AudioGeneration is forwarded whenever the caller sets it.
+	if meta.AudioGeneration != "" {
 		cfg.AudioGeneration = meta.AudioGeneration
 		hasConfig = true
 	}
@@ -651,109 +651,16 @@ func (a *TaskAdaptor) buildVideoRequestBody(c *gin.Context, info *relaycommon.Re
 		hasConfig = true
 	}
 
+	body.FileInfos = videoFileInfosFromContent(taskcommon.NormalizeVideoContent(taskReq))
+
+	// 宽高比只读收拢后的外层 ratio。可灵已有素材时不传，由素材决定。
+	if taskReq.Ratio != "" && !(tencentModelName == "Kling" && len(body.FileInfos) > 0) {
+		cfg.AspectRatio = taskReq.Ratio
+		hasConfig = true
+	}
+
 	if hasConfig {
 		body.OutputConfig = cfg
-	}
-
-	// ── FileInfos ──────────────────────────────────────────────────────────────
-	// PixVerse multi-subject: metadata.pixverse_subjects takes priority over taskReq.Images.
-	if meta.PixverseSubjects != "" && tencentModelName == "PixVerse" {
-		var subjects []pixverseSubjectItem
-		if jsonErr := common.Unmarshal([]byte(meta.PixverseSubjects), &subjects); jsonErr == nil {
-			for _, s := range subjects {
-				if s.URL != "" {
-					body.FileInfos = append(body.FileInfos, videoFileInfo{
-						Type:          "Url",
-						Category:      "Image",
-						Url:           s.URL,
-						Usage:         "Reference",
-						ReferenceType: s.Type,
-						Text:          s.Name,
-					})
-				}
-			}
-		} else {
-			common.SysLog(fmt.Sprintf("[TencentVOD] video BuildRequestBody: failed to parse pixverse_subjects: %v", jsonErr))
-		}
-	} else {
-		images := taskReq.Images
-		switch {
-		case len(images) == 0:
-			// t2v mode: no FileInfos
-
-		case len(images) == 1 && meta.LastFrame != "":
-			// First+last frame mode
-			if strings.TrimSpace(images[0]) != "" {
-				body.FileInfos = append(body.FileInfos, videoFileInfo{
-					Type:     "Url",
-					Category: "Image",
-					Url:      images[0],
-					Usage:    "FirstFrame",
-				})
-			}
-			body.LastFrameUrl = meta.LastFrame
-
-		case len(images) == 1 && strings.EqualFold(meta.InputUsage, "Reference"):
-			// Reference image mode (single image, forced by caller)
-			if strings.TrimSpace(images[0]) != "" {
-				fi := videoFileInfo{
-					Type:     "Url",
-					Category: "Image",
-					Url:      images[0],
-					Usage:    "Reference",
-				}
-				if meta.ReferenceType != "" {
-					fi.ReferenceType = meta.ReferenceType
-				}
-				body.FileInfos = append(body.FileInfos, fi)
-			}
-
-		case len(images) == 1:
-			// Default i2v first-frame mode
-			if strings.TrimSpace(images[0]) != "" {
-				body.FileInfos = append(body.FileInfos, videoFileInfo{
-					Type:     "Url",
-					Category: "Image",
-					Url:      images[0],
-					Usage:    "FirstFrame",
-				})
-			}
-
-		default:
-			// Multiple images: first → FirstFrame, rest → Reference
-			if strings.TrimSpace(images[0]) != "" {
-				body.FileInfos = append(body.FileInfos, videoFileInfo{
-					Type:     "Url",
-					Category: "Image",
-					Url:      images[0],
-					Usage:    "FirstFrame",
-				})
-			}
-			for _, img := range images[1:] {
-				if strings.TrimSpace(img) != "" {
-					fi := videoFileInfo{
-						Type:     "Url",
-						Category: "Image",
-						Url:      img,
-						Usage:    "Reference",
-					}
-					if meta.ReferenceType != "" {
-						fi.ReferenceType = meta.ReferenceType
-					}
-					body.FileInfos = append(body.FileInfos, fi)
-				}
-			}
-		}
-	}
-
-	// Append video reference/edit input (Kling / Vidu only)
-	if meta.VideoURL != "" {
-		body.FileInfos = append(body.FileInfos, videoFileInfo{
-			Type:     "Url",
-			Category: "Video",
-			Url:      meta.VideoURL,
-			Usage:    "FirstFrame",
-		})
 	}
 
 	data, err := common.Marshal(body)

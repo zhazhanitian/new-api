@@ -697,29 +697,59 @@ type TaskRelayInfo struct {
 	ReqFileFormat string
 }
 
+// TaskSubmitReq 是异步任务的公共请求体，图片任务和视频任务共用。
+// 字段注释里的「图片」「视频」表示谁会读它。视频提交在计价前会把旧的 size、
+// metadata.resolution、metadata.ratio 收拢到外层 Resolution、Ratio，之后视频逻辑只读外层。
 type TaskSubmitReq struct {
-	Prompt            string                 `json:"prompt"`
-	Model             string                 `json:"model,omitempty"`
-	Mode              string                 `json:"mode,omitempty"`
-	// Image 仅用于图片任务（/v1/images/generations、/v2/image-tasks），
-	// 视频任务请统一使用 Images 字段。
-	// 兼容层：如果传入且 Images 为空，会自动合并为 Images[0]。
-	Image             string                 `json:"image,omitempty"`
-	Images            []string               `json:"images,omitempty"`
-	Size              string                 `json:"size,omitempty"`
-	Quality           string                 `json:"quality,omitempty"`
-	N                 int                    `json:"n,omitempty"`
-	Style             string                 `json:"style,omitempty"`
-	OutputFormat      string                 `json:"output_format,omitempty"`
-	OutputCompression int                    `json:"output_compression,omitempty"`
-	Duration          int                    `json:"duration,omitempty"`
-	Seconds           string                 `json:"seconds,omitempty"`
-	Seed              *int                   `json:"seed,omitempty"`
-	// InputReference 已废弃，视频任务请统一使用 Images[0]。
-	// 兼容层：如果传入会自动转为 Images[0]。
-	InputReference    string                 `json:"input_reference,omitempty"`
-	ResponseFormat    string                 `json:"response_format,omitempty"`
-	Metadata          map[string]interface{} `json:"metadata,omitempty"`
+	// Prompt 文本提示词。图片、视频共用。
+	Prompt string `json:"prompt"`
+	// Model 模型 ID。图片、视频共用。
+	Model string `json:"model,omitempty"`
+
+	// Mode 视频生成模式，如可灵的 std / pro。仅视频。
+	Mode string `json:"mode,omitempty"`
+	// Resolution 视频分辨率档位，如 480p、720P、768P、1080P、2K、4K。仅视频。
+	// 不要把 16:9 或 1920x1080 写在这里。
+	Resolution string `json:"resolution,omitempty"`
+	// Ratio 视频宽高比，如 16:9、9:16、1:1。仅视频。
+	// metadata.ratio 已废弃，只在收拢旧请求时读取。
+	Ratio string `json:"ratio,omitempty"`
+	// Duration 视频时长，单位秒。仅视频。不传则由各模型使用自己的默认值。
+	Duration int `json:"duration,omitempty"`
+	// Seconds 已不再对外暴露。仅兼容仍在传该字段的旧视频请求。
+	// 与 Duration 同时存在时，内部仍以 Seconds 为准。
+	Seconds string `json:"seconds,omitempty"`
+	// InputReference 已废弃的视频参考图。仅旧视频请求。
+	// 传入后会并进 Images[0]，新请求请写 metadata.content。
+	InputReference string `json:"input_reference,omitempty"`
+
+	// Image 单张输入图。仅图片任务（/v1/images/generations、/v2/image-tasks）。
+	// 若视频旧请求带了该字段且 Images 为空，会合并为 Images[0]。
+	Image string `json:"image,omitempty"`
+	// Size 图片尺寸，如 1024x1024、2K。仅图片。
+	// 视频不再读取。旧视频请求里的分辨率档、16:9、1920x1080 会在进计价前收拢到 Resolution、Ratio。
+	Size string `json:"size,omitempty"`
+	// Quality 图片质量或清晰度档位。仅图片。腾讯生图用它辅助确定模型版本。
+	Quality string `json:"quality,omitempty"`
+	// N 生成图片张数。仅图片。
+	N int `json:"n,omitempty"`
+	// Style 图片风格。仅图片；音乐任务也会复用这个字段。
+	Style string `json:"style,omitempty"`
+	// OutputFormat 图片输出格式，如 jpeg、png。仅图片。
+	OutputFormat string `json:"output_format,omitempty"`
+	// OutputCompression 图片压缩等级。仅图片。
+	OutputCompression int `json:"output_compression,omitempty"`
+	// ResponseFormat 图片返回方式，url 或 b64_json。仅图片。
+	ResponseFormat string `json:"response_format,omitempty"`
+
+	// Images 输入图片列表。图片的参考图、视频的旧版图片列表都用它。
+	// 新视频请求的素材请写 metadata.content，不要再靠这个字段区分首帧和参考图。
+	Images []string `json:"images,omitempty"`
+	// Seed 随机种子，用于尽量复现生成结果。图片、视频共用。
+	Seed *int `json:"seed,omitempty"`
+	// Metadata 渠道扩展参数。图片、视频共用，各自读取自己认识的键。
+	// 视频的 metadata.resolution、metadata.ratio 已废弃，只在收拢旧请求时读取。
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {
@@ -792,11 +822,11 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 }
 
 type TaskInfo struct {
-	Code             int      `json:"code"`
-	TaskID           string   `json:"task_id"`
-	Status           string   `json:"status"`
-	Reason           string   `json:"reason,omitempty"`
-	Url              string   `json:"url,omitempty"`
+	Code   int    `json:"code"`
+	TaskID string `json:"task_id"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+	Url    string `json:"url,omitempty"`
 	// Urls 多图任务中所有图片 URL（如 Kling/OG n>1）。
 	// 若非空，task_polling.go 轮询路径会将其序列化为 dto.ImageResponse 写入 task.Data，
 	// TaskModel2ImageTaskDto 优先从 task.Data 中读取全部图片。
@@ -811,7 +841,7 @@ type TaskInfo struct {
 	// 预扣时表达式按此 n 计费（expression 含 * n），结算时以此为除数做多退少补。
 	// 与 ActualImages 配合使用，两者均从上游响应中读取，保证预扣和结算依据相同。
 	// 若为 0 或 1 则不触发多图结算（模型不支持多图或未请求多图）。
-	ExpectedImages   int      `json:"expected_images,omitempty"`
+	ExpectedImages int `json:"expected_images,omitempty"`
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

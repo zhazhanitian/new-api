@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -225,6 +226,11 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
 		// 兼容单图上传
 		req.Images = []string{req.Image}
+	}
+
+	// 只收拢视频。图片继续使用 Size，不能把 1024x1024 拆掉。
+	if c.GetInt("relay_mode") == relayconstant.RelayModeVideoSubmit {
+		NormalizeVideoResolutionRatio(&req)
 	}
 
 	storeTaskRequest(c, info, action, req)

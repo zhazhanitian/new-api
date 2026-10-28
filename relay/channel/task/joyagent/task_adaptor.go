@@ -22,8 +22,8 @@ import (
 
 // ── Request / Response structures ────────────────────────────────────────────
 
-// mediaItem 对应阿里云/JoyAgent media 数组的单个元素
-// type 可选值：first_frame / reference_image / video
+// mediaItem 对应 JoyAgent media 数组的单个元素。
+// type 来自统一 content：first_frame / last_frame / reference_image / video。
 type mediaItem struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
@@ -129,53 +129,34 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, errors.Wrap(err, "get_task_request_failed")
 	}
+	relaycommon.NormalizeVideoResolutionRatio(&taskReq)
 
 	var meta taskMetadata
 	_ = taskcommon.UnmarshalMetadata(taskReq.Metadata, &meta)
 
 	modelName := info.OriginModelName
-	inp := submitInput{Prompt: taskReq.Prompt}
-
-	switch info.Action {
-	case constant.TaskActionTextGenerate:
-		// t2v：仅 prompt，无 media
-
-	case constant.TaskActionGenerate:
-		if strings.HasSuffix(modelName, "i2v") {
-			// i2v：首帧图，优先取 InputReference，其次 Images[0]
-			imgURL := taskReq.InputReference
-			if imgURL == "" && len(taskReq.Images) > 0 {
-				imgURL = taskReq.Images[0]
-			}
-			if imgURL != "" {
-				inp.Media = []mediaItem{{Type: "first_frame", URL: imgURL}}
-			}
-		} else {
-			// video-edit：Images[0] 为待编辑视频，Images[1:] 为参考图（可选）
-			for i, url := range taskReq.Images {
-				t := "reference_image"
-				if i == 0 {
-					t = "video"
-				}
-				inp.Media = append(inp.Media, mediaItem{Type: t, URL: url})
-			}
-		}
-
-	case constant.TaskActionReferenceGenerate:
-		// r2v：Images 数组中每个 URL 均为参考图
-		for _, url := range taskReq.Images {
-			inp.Media = append(inp.Media, mediaItem{Type: "reference_image", URL: url})
-		}
+	inp := submitInput{
+		Prompt: taskReq.Prompt,
+		Media:  happyHorseMedia(taskReq),
 	}
 
+	seed := meta.Seed
+	if taskReq.Seed != nil {
+		seed = int64(*taskReq.Seed)
+	}
+	resolution := sizeToResolution(taskReq.Resolution)
+	if resolution == "" {
+		resolution = strings.TrimSpace(taskReq.Resolution)
+	}
 	params := submitParameters{
-		Resolution: sizeToResolution(taskReq.Size),
-		Seed:       meta.Seed,
+		Resolution: resolution,
+		Seed:       seed,
 	}
 
-	// ratio 仅 t2v/r2v 支持；i2v 无需（宽高比跟随首帧），video-edit 无需
-	if meta.Ratio != "" && !strings.HasSuffix(modelName, "i2v") && !strings.Contains(modelName, "video-edit") {
-		params.Ratio = meta.Ratio
+	// ratio 仅 t2v/r2v 支持；i2v 无需（宽高比跟随首帧），video-edit 无需。
+	// 只读收拢后的外层 ratio。
+	if taskReq.Ratio != "" && !strings.HasSuffix(modelName, "i2v") && !strings.Contains(modelName, "video-edit") {
+		params.Ratio = taskReq.Ratio
 	}
 
 	// duration 仅 t2v/i2v/r2v 支持；video-edit 输出时长跟随输入视频
@@ -201,6 +182,35 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, errors.Wrap(err, "marshal_request_failed")
 	}
 	return bytes.NewReader(bs), nil
+}
+
+// happyHorseMedia maps the shared video content list onto JoyAgent media types.
+// Images without an explicit role are reference images. A video uses type "video".
+func happyHorseMedia(req relaycommon.TaskSubmitReq) []mediaItem {
+	if len(req.Images) == 0 && strings.TrimSpace(req.InputReference) != "" {
+		req.Images = []string{strings.TrimSpace(req.InputReference)}
+	}
+	items := taskcommon.NormalizeVideoContent(req)
+	media := make([]mediaItem, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item.URL) == "" {
+			continue
+		}
+		switch item.Type {
+		case taskcommon.VideoContentVideo:
+			media = append(media, mediaItem{Type: "video", URL: item.URL})
+		case taskcommon.VideoContentImage:
+			mediaType := "reference_image"
+			switch item.Role {
+			case taskcommon.VideoRoleFirstFrame:
+				mediaType = "first_frame"
+			case taskcommon.VideoRoleLastFrame:
+				mediaType = "last_frame"
+			}
+			media = append(media, mediaItem{Type: mediaType, URL: item.URL})
+		}
+	}
+	return media
 }
 
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
