@@ -58,6 +58,7 @@ const (
 	ChannelTypeTencentVOD     = 58
 	ChannelTypeJoyAgent       = 59
 	ChannelTypeAPIMartSuno    = 60
+	ChannelTypeZhongJiVideo   = 61
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -124,6 +125,7 @@ var ChannelBaseURLs = []string{
 	"https://vod.tencentcloudapi.com",           //58
 	"https://agentrs.jd.com",                    //59
 	"https://apib.ai",                           //60
+	"https://aiplay.gee.cn/new-api",             //61 ZhongJi video
 }
 
 var ChannelTypeNames = map[int]string{
@@ -184,6 +186,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeTencentVOD:     "TencentVOD",
 	ChannelTypeJoyAgent:       "JoyAgent",
 	ChannelTypeAPIMartSuno:    "APIMartSuno",
+	ChannelTypeZhongJiVideo:   "ZhongJiVideo",
 }
 
 func GetChannelTypeName(channelType int) string {

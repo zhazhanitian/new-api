@@ -1,19 +1,27 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type PortraitAsset struct {
-	Id            int       `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserId        int       `json:"user_id" gorm:"index;not null"`
-	RemoteGroupId string    `json:"remote_group_id" gorm:"type:varchar(191);index"`
-	RemoteAssetId string    `json:"remote_asset_id" gorm:"type:varchar(191);index;not null"`
-	Name          string    `json:"name" gorm:"type:varchar(255)"`
-	AssetType     string    `json:"asset_type" gorm:"type:varchar(20);not null"` // Image / Video / Audio
-	SourceUrl     string    `json:"source_url" gorm:"type:text;not null"`
-	Status        string    `json:"status" gorm:"type:varchar(50)"` // Submitted / Processing / Active / Failed
-	ResolvedUrl   string    `json:"resolved_url" gorm:"type:text"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	Id            int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserId        int    `json:"user_id" gorm:"index;not null"`
+	RemoteGroupId string `json:"remote_group_id" gorm:"type:varchar(191);index"`
+	RemoteAssetId string `json:"remote_asset_id" gorm:"type:varchar(191);index;not null"`
+	// RemoteAssetId 是对外的逻辑 asset_id，取主账号（volc）的上游 ID。
+	// 各渠道账号里的上游 ID 和状态见 PortraitAssetBinding。
+	Name      string `json:"name" gorm:"type:varchar(255)"`
+	AssetType string `json:"asset_type" gorm:"type:varchar(20);not null"` // Image / Video / Audio
+	SourceUrl string `json:"source_url" gorm:"type:text;not null"`
+	// Status 是汇总状态：有绑定时由所有渠道绑定汇总得出（全部 Active 才 Active），
+	// 没有绑定的线上历史素材沿用火山的状态。
+	Status      string    `json:"status" gorm:"type:varchar(50)"` // Submitted / Processing / Active / Failed
+	ResolvedUrl string    `json:"resolved_url" gorm:"type:text"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func GetPortraitAssetsByUserIdPaged(userId int, groupId string, startIdx, pageSize int) ([]*PortraitAsset, int64, error) {
@@ -44,12 +52,17 @@ func SavePortraitAsset(asset *PortraitAsset) error {
 	return DB.Save(asset).Error
 }
 
-// GetPendingPortraitAssets 返回所有状态不是终态的素材（用于后台轮询）
-// 终态：Active（审核通过）、Failed（失败）
-func GetPendingPortraitAssets() ([]*PortraitAsset, error) {
-	var assets []*PortraitAsset
-	err := DB.Where("status NOT IN ?", []string{"Active", "Failed"}).
-		Order("updated_at asc").
-		Find(&assets).Error
-	return assets, err
+// CreatePortraitAssetWithBindings 在同一事务里写入逻辑素材和各渠道绑定。
+func CreatePortraitAssetWithBindings(asset *PortraitAsset, bindings []*PortraitAssetBinding) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(asset).Error; err != nil {
+			return err
+		}
+		for _, b := range bindings {
+			if err := tx.Create(b).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

@@ -37,7 +37,7 @@ func sha256Hex(data string) string {
 // 返回 (headers map, query string, error)。
 func BuildRequest(accessKeyId, secretKey, region, action string, bodyBytes []byte) (headers map[string]string, queryStr string, err error) {
 	if accessKeyId == "" || secretKey == "" {
-		return nil, "", fmt.Errorf("火山引擎凭据未配置，请在系统设置中配置 VolcPortraitAccessKeyId / VolcPortraitSecretAccessKey")
+		return nil, "", fmt.Errorf("人像库凭据未配置")
 	}
 
 	now := time.Now().UTC()

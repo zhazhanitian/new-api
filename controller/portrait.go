@@ -6,7 +6,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	portraitSvc "github.com/QuantumNous/new-api/service/portrait"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -58,24 +57,14 @@ func PortraitCreateGroup(c *gin.Context) {
 		req.GroupType = "AIGC"
 	}
 
-	result, err := portraitSvc.CreateAssetGroup(req.Name, req.Description, req.GroupType)
+	group, err := portraitSvc.CreateGroupAllChannels(userId, req.Name, req.Description, req.GroupType)
 	if err != nil {
-		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
-		return
-	}
-
-	group := &model.PortraitGroup{
-		UserId:        userId,
-		RemoteGroupId: result.Id,
-		Name:          req.Name,
-	}
-	if err = model.CreatePortraitGroup(group); err != nil {
-		common.ApiErrorMsg(c, "保存素材组记录失败: "+err.Error())
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"group_id": result.Id,
+		"group_id": group.RemoteGroupId,
 		"name":     req.Name,
 		"id":       group.Id,
 	})
@@ -132,8 +121,8 @@ func PortraitUpdateGroup(c *gin.Context) {
 		return
 	}
 
-	if _, err = portraitSvc.UpdateAssetGroup(remoteGroupId, req.Name, req.Description); err != nil {
-		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
+	if err = portraitSvc.UpdateGroupAllChannels(group, req.Name, req.Description); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 
@@ -180,31 +169,18 @@ func PortraitCreateAsset(c *gin.Context) {
 		return
 	}
 
-	result, err := portraitSvc.CreateAsset(req.GroupId, req.URL, req.AssetType, req.Name)
+	asset, err := portraitSvc.CreateAssetAllChannels(userId, req.GroupId, req.URL, req.AssetType, req.Name)
 	if err != nil {
-		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
-		return
-	}
-
-	asset := &model.PortraitAsset{
-		UserId:        userId,
-		RemoteGroupId: req.GroupId,
-		RemoteAssetId: result.AssetId,
-		Name:          req.Name,
-		AssetType:     req.AssetType,
-		SourceUrl:     req.URL,
-		Status:        "Submitted",
-	}
-	if err = model.CreatePortraitAsset(asset); err != nil {
-		common.ApiErrorMsg(c, "保存素材记录失败: "+err.Error())
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 
 	common.ApiSuccess(c, gin.H{
 		"id":              asset.Id,
-		"asset_id":        result.AssetId,
-		"remote_group_id": req.GroupId,
+		"asset_id":        asset.RemoteAssetId,
+		"remote_group_id": asset.RemoteGroupId,
 		"status":          asset.Status,
+		"channels":        portraitSvc.AssetChannels(asset),
 	})
 }
 
@@ -223,13 +199,34 @@ func PortraitListAssets(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	views := make([]portraitAssetView, 0, len(assets))
+	for _, asset := range assets {
+		views = append(views, portraitAssetView{PortraitAsset: asset, Channels: portraitSvc.AssetChannels(asset)})
+	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(assets)
+	pageInfo.SetItems(views)
 	common.ApiSuccess(c, pageInfo)
 }
 
+// portraitAssetView 在素材记录上附带各渠道状态。
+type portraitAssetView struct {
+	*model.PortraitAsset
+	Channels []portraitSvc.ChannelStatus `json:"channels"`
+}
+
+// PortraitBackfill POST /api/portrait/backfill（仅管理员）
+// 把缺少渠道绑定的素材补建到所有参与渠道，幂等，可重复执行。
+func PortraitBackfill(c *gin.Context) {
+	result, err := portraitSvc.BackfillMissingChannels()
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
 // PortraitGetAsset GET /v1/portrait/assets/:assetId
-// 实时调用火山引擎刷新状态，并更新本地记录
+// 实时刷新各渠道上游状态，并更新本地记录
 func PortraitGetAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {
@@ -257,6 +254,7 @@ func PortraitGetAsset(c *gin.Context) {
 			"name":         asset.Name,
 			"asset_type":   asset.AssetType,
 			"source_url":   asset.SourceUrl,
+			"channels":     portraitSvc.AssetChannels(asset),
 			"created_at":   asset.CreatedAt,
 			"updated_at":   asset.UpdatedAt,
 		}
@@ -266,28 +264,15 @@ func PortraitGetAsset(c *gin.Context) {
 		return h
 	}
 
-	// 终态：Active（通过）、Failed（失败），不再调火山
-	if asset.Status == "Active" || asset.Status == "Failed" {
+	// 终态：Active（所有渠道都通过）、Failed（任一渠道失败），不再调上游
+	if asset.Status == model.PortraitStatusActive || asset.Status == model.PortraitStatusFailed {
 		common.ApiSuccess(c, buildAssetResponse(""))
 		return
 	}
 
-	// 非终态：实时查询火山引擎
-	volcResult, err := portraitSvc.GetAsset(remoteAssetId)
-	if err != nil {
-		common.ApiSuccess(c, buildAssetResponse(err.Error()))
-		return
-	}
-
-	if volcResult.Status != "" {
-		asset.Status = volcResult.Status
-	}
-	if volcResult.ResolvedUrl != "" {
-		asset.ResolvedUrl = volcResult.ResolvedUrl
-	}
-	_ = model.SavePortraitAsset(asset)
-
-	common.ApiSuccess(c, buildAssetResponse(""))
+	// 非终态：实时刷新各渠道状态并重算汇总
+	refreshErr := portraitSvc.RefreshAsset(asset)
+	common.ApiSuccess(c, buildAssetResponse(refreshErr))
 }
 
 // PortraitUpdateAsset PUT /v1/portrait/assets/:assetId
@@ -321,8 +306,8 @@ func PortraitUpdateAsset(c *gin.Context) {
 		return
 	}
 
-	if _, err = portraitSvc.UpdateAsset(remoteAssetId, req.Name); err != nil {
-		common.ApiErrorMsg(c, "调用火山引擎失败: "+err.Error())
+	if err = portraitSvc.UpdateAssetAllChannels(asset, req.Name); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 

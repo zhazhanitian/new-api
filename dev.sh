@@ -52,7 +52,7 @@ export PORT="9006"
 if [ -f .env ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
-      VOLC_PORTRAIT_ACCESS_KEY_ID=*|VOLC_PORTRAIT_SECRET_ACCESS_KEY=*|VOLC_PORTRAIT_PROJECT_NAME=*|VOLC_PORTRAIT_REGION=*)
+      VOLC_PORTRAIT_*=*|PORTRAIT_*=*)
         export "$line"
         ;;
     esac

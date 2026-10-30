@@ -81,7 +81,7 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeKling
 	case constant.ChannelTypeVidu:
 		apiType = constant.APITypeVidu
-	case constant.ChannelTypeDoubaoVideo:
+	case constant.ChannelTypeDoubaoVideo, constant.ChannelTypeZhongJiVideo:
 		apiType = constant.APITypeDoubaoVideo
 	case constant.ChannelTypeSora:
 		apiType = constant.APITypeSora

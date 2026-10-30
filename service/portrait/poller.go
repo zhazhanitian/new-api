@@ -1,6 +1,7 @@
 package portrait
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -9,8 +10,9 @@ import (
 )
 
 // StartPortraitPoller 启动后台素材审核状态轮询协程。
-// 每隔 portrait_setting.VolcPortraitPollIntervalSeconds 秒扫描一次所有非终态素材，
-// 调用火山引擎 GetAsset 刷新状态并写回数据库。
+// 每隔 portrait_setting.VolcPortraitPollIntervalSeconds 秒扫描一次所有非终态绑定，
+// 按每条绑定自己的渠道取凭据刷新状态，再重算对应逻辑素材的汇总状态。
+// 没有绑定的线上历史素材仍按火山凭据刷新。
 func StartPortraitPoller() {
 	go func() {
 		for {
@@ -26,47 +28,62 @@ func StartPortraitPoller() {
 }
 
 func pollPendingAssets() {
-	assets, err := model.GetPendingPortraitAssets()
+	cache := newCredCache()
+	pollLegacyAssets(cache)
+	pollPendingBindings(cache)
+}
+
+func pollLegacyAssets(cache *credCache) {
+	assets, err := model.GetLegacyPendingPortraitAssets()
 	if err != nil {
-		common.SysLog("portrait poller: 查询待审核素材失败: " + err.Error())
+		common.SysLog("portrait poller: 查询待审核历史素材失败: " + err.Error())
 		return
 	}
 	if len(assets) == 0 {
 		return
 	}
-	common.SysLog("portrait poller: 开始刷新 " + itoa(len(assets)) + " 个待审核素材")
-
+	common.SysLog("portrait poller: 开始刷新 " + strconv.Itoa(len(assets)) + " 个待审核历史素材")
 	for _, asset := range assets {
-		result, err := GetAsset(asset.RemoteAssetId)
-		if err != nil {
-			common.SysLog("portrait poller: 查询素材 " + asset.RemoteAssetId + " 失败: " + err.Error())
-			continue
-		}
-		changed := false
-		if result.Status != "" && result.Status != asset.Status {
-			asset.Status = result.Status
-			changed = true
-		}
-		if result.ResolvedUrl != "" && result.ResolvedUrl != asset.ResolvedUrl {
-			asset.ResolvedUrl = result.ResolvedUrl
-			changed = true
-		}
-		if changed {
-			if saveErr := model.SavePortraitAsset(asset); saveErr != nil {
-				common.SysLog("portrait poller: 保存素材 " + asset.RemoteAssetId + " 失败: " + saveErr.Error())
-			}
+		if msg := refreshLegacyAsset(asset, cache); msg != "" {
+			common.SysLog("portrait poller: 素材 " + asset.RemoteAssetId + " 刷新失败: " + msg)
 		}
 	}
 }
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
+func pollPendingBindings(cache *credCache) {
+	bindings, err := model.GetPendingPortraitAssetBindings()
+	if err != nil {
+		common.SysLog("portrait poller: 查询待审核素材绑定失败: " + err.Error())
+		return
 	}
-	buf := make([]byte, 0, 10)
-	for n > 0 {
-		buf = append([]byte{byte('0' + n%10)}, buf...)
-		n /= 10
+	if len(bindings) == 0 {
+		return
 	}
-	return string(buf)
+	common.SysLog("portrait poller: 开始刷新 " + strconv.Itoa(len(bindings)) + " 个待审核素材绑定")
+
+	// 逻辑素材 -> 本轮是否有绑定被刷新，刷新后统一重算汇总状态。
+	touched := map[string]int{}
+	for _, b := range bindings {
+		cred, credErr := cache.get(b.PortraitChannel)
+		if credErr != nil {
+			common.SysLog("portrait poller: 素材 " + b.AssetId + " 在渠道 " + b.PortraitChannel + " 凭据不可用: " + credErr.Error())
+			continue
+		}
+		if refreshErr := refreshBinding(b, cred); refreshErr != nil {
+			common.SysLog("portrait poller: 查询素材 " + b.AssetId + " 在渠道 " + b.PortraitChannel + " 失败: " + refreshErr.Error())
+			continue
+		}
+		touched[b.AssetId] = b.UserId
+	}
+
+	for assetId, userId := range touched {
+		asset, getErr := model.GetPortraitAssetByRemoteId(userId, assetId)
+		if getErr != nil {
+			common.SysLog("portrait poller: 读取素材 " + assetId + " 失败: " + getErr.Error())
+			continue
+		}
+		if recomputeErr := RecomputeAssetStatus(asset); recomputeErr != nil {
+			common.SysLog("portrait poller: 保存素材 " + assetId + " 失败: " + recomputeErr.Error())
+		}
+	}
 }

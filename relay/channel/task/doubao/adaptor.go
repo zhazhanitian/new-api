@@ -23,6 +23,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
+	portraitSvc "github.com/QuantumNous/new-api/service/portrait"
+	"github.com/QuantumNous/new-api/setting/portrait_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -134,7 +136,37 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return validate3DRequest(c, info)
 	}
 	// Seedance：prompt 必填（提示词优选外层 prompt）
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); taskErr != nil {
+		return taskErr
+	}
+	// 人像素材：请求里的 asset:// 必须在当前选中渠道就绪。放在预扣费之前，失败按 400 返回。
+	if req, err := relaycommon.GetTaskRequest(c); err == nil {
+		for _, item := range taskcommon.NormalizeVideoContent(req) {
+			if _, err := portraitSvc.RewriteAssetURL(info.UserId, portrait_setting.AliasForChannelType(info.ChannelType), item.URL); err != nil {
+				return service.TaskErrorWrapperLocal(err, "portrait_asset_unavailable", http.StatusBadRequest)
+			}
+		}
+	}
+	return nil
+}
+
+// rewritePortraitAssets 把 content 里的 asset://逻辑ID 改写成当前渠道账号的上游 ID。
+// 素材必须属于该用户，且当前渠道的绑定为 Active，否则报错，不透传给上游。
+func rewritePortraitAssets(userId, channelType int, content []ContentItem) error {
+	alias := portrait_setting.AliasForChannelType(channelType)
+	for i := range content {
+		for _, media := range []*MediaURL{content[i].ImageURL, content[i].VideoURL, content[i].AudioURL} {
+			if media == nil {
+				continue
+			}
+			rewritten, err := portraitSvc.RewriteAssetURL(userId, alias, media.URL)
+			if err != nil {
+				return err
+			}
+			media.URL = rewritten
+		}
+	}
+	return nil
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -164,8 +196,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 
 	otherRatios := make(map[string]float64)
 
+	billingModel := billingModelName(info)
 	if normalizedContentHasVideo(taskcommon.NormalizeVideoContent(req)) {
-		if ratio, ok := GetVideoInputRatio(info.OriginModelName); ok {
+		if ratio, ok := GetVideoInputRatio(billingModel); ok {
 			otherRatios["video_input"] = ratio
 		}
 	}
@@ -176,14 +209,14 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		resolution = strings.TrimSpace(req.Resolution)
 	}
 	if resolution != "" {
-		if resRatio, ok := GetResolutionRatio(info.OriginModelName, resolution); ok {
+		if resRatio, ok := GetResolutionRatio(billingModel, resolution); ok {
 			otherRatios["resolution"] = resRatio
 		}
 	}
 
 	// 若模型支持有声/无声区分，且明确关闭音频，则应用无声折扣。
 	// 不传 generate_audio 时按火山默认有声，不打折。
-	if ratio, ok := GetSilentVideoRatio(info.OriginModelName); ok {
+	if ratio, ok := GetSilentVideoRatio(billingModel); ok {
 		if !hasAudioInMetadata(req.Metadata) {
 			otherRatios["silent_video"] = ratio
 		}
@@ -248,6 +281,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	body, err := a.convertToRequestPayload(&req)
 	if err != nil {
 		return nil, errors.Wrap(err, "convert request payload failed")
+	}
+	if err = rewritePortraitAssets(info.UserId, info.ChannelType, body.Content); err != nil {
+		return nil, err
 	}
 	if info.IsModelMapped {
 		body.Model = info.UpstreamModelName

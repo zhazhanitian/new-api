@@ -100,6 +100,7 @@ export function getChannelTypeIcon(type: number): string {
     36: 'Suno', // SunoAPI
     55: 'OpenAI', // Sora
     54: 'Doubao', // DoubaoVideo
+    61: 'Doubao', // ZhongJiVideo, same upstream family
     56: 'Replicate', // Replicate
     58: 'Tencent', // TencentVOD
     59: 'Qwen',   // JoyAgent (Alibaba-backed)

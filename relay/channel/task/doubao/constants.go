@@ -1,6 +1,10 @@
 package doubao
 
-import "strings"
+import (
+	"strings"
+
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+)
 
 var ModelList = []string{
 	// ── Video generation (async, seedance) ──────────────────────────────
@@ -95,6 +99,46 @@ var silentVideoRatioMap = map[string]float64{
 func GetSilentVideoRatio(modelName string) (float64, bool) {
 	r, ok := silentVideoRatioMap[modelName]
 	return r, ok
+}
+
+// billingModelName 选择查计费系数表用的模型名。
+// 表的键是官方模型 ID。渠道把对外 ID 改名后，OriginModelName 查不到系数；
+// 此时若渠道模型映射已经把上游名指回官方 ID，就用上游名。
+// 官方 ID 本身在表里时直接返回，不看映射，避免改变现有火山渠道的结算。
+func billingModelName(info *relaycommon.RelayInfo) string {
+	if info == nil {
+		return ""
+	}
+	origin := info.OriginModelName
+	if hasSeedanceBillingRatio(origin) {
+		return origin
+	}
+	if info.ChannelMeta != nil && info.IsModelMapped {
+		upstream := strings.TrimSpace(info.UpstreamModelName)
+		if upstream != "" && upstream != origin && hasSeedanceBillingRatio(upstream) {
+			return upstream
+		}
+	}
+	return origin
+}
+
+func hasSeedanceBillingRatio(modelName string) bool {
+	if modelName == "" {
+		return false
+	}
+	if _, ok := videoInputRatioMap[modelName]; ok {
+		return true
+	}
+	if _, ok := silentVideoRatioMap[modelName]; ok {
+		return true
+	}
+	prefix := modelName + ":"
+	for key := range resolutionRatioMap {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // PriceDisplayTier 模型广场展示用分档（相对「后台配置的基准输入价」的倍率）。

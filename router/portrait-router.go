@@ -20,4 +20,11 @@ func SetPortraitRouter(router *gin.Engine) {
 		portraitRouter.GET("/assets/:assetId", controller.PortraitGetAsset)
 		portraitRouter.PUT("/assets/:assetId", controller.PortraitUpdateAsset)
 	}
+
+	// 管理端：把缺少渠道绑定的素材补建到所有参与渠道（幂等）
+	portraitAdminRouter := router.Group("/api/portrait")
+	portraitAdminRouter.Use(middleware.RootAuth())
+	{
+		portraitAdminRouter.POST("/backfill", controller.PortraitBackfill)
+	}
 }

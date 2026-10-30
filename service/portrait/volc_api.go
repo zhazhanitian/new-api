@@ -22,10 +22,9 @@ type volcResponse struct {
 	Result json.RawMessage `json:"Result,omitempty"`
 }
 
-func callVolcAPI(action string, body map[string]interface{}) (json.RawMessage, error) {
-	cfg := portrait_setting.VolcPortraitAccessKeyId
-	if cfg == "" {
-		return nil, fmt.Errorf("火山引擎凭据未配置，请在系统设置中配置 VolcPortraitAccessKeyId")
+func callVolcAPI(cred portrait_setting.Credential, action string, body map[string]interface{}) (json.RawMessage, error) {
+	if cred.AK == "" || cred.SK == "" {
+		return nil, fmt.Errorf("人像库凭据未配置")
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -33,14 +32,14 @@ func callVolcAPI(action string, body map[string]interface{}) (json.RawMessage, e
 		return nil, fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
-	region := portrait_setting.VolcPortraitRegion
+	region := cred.Region
 	if region == "" {
 		region = "cn-beijing"
 	}
 
 	headers, queryStr, err := BuildRequest(
-		portrait_setting.VolcPortraitAccessKeyId,
-		portrait_setting.VolcPortraitSecretAccessKey,
+		cred.AK,
+		cred.SK,
 		region,
 		action,
 		bodyBytes,
@@ -88,8 +87,8 @@ type CreateAssetGroupResult struct {
 }
 
 // CreateAssetGroup 在火山引擎创建素材组
-func CreateAssetGroup(name, description, groupType string) (*CreateAssetGroupResult, error) {
-	projectName := portrait_setting.VolcPortraitProjectName
+func CreateAssetGroup(cred portrait_setting.Credential, name, description, groupType string) (*CreateAssetGroupResult, error) {
+	projectName := cred.Project
 	body := map[string]interface{}{
 		"Name":        name,
 		"GroupType":   groupType,
@@ -99,7 +98,7 @@ func CreateAssetGroup(name, description, groupType string) (*CreateAssetGroupRes
 		body["Description"] = description
 	}
 
-	raw, err := callVolcAPI("CreateAssetGroup", body)
+	raw, err := callVolcAPI(cred, "CreateAssetGroup", body)
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +135,8 @@ type ListAssetGroupsResult struct {
 }
 
 // ListAssetGroups 查询火山引擎上的素材组（按 projectName 过滤）
-func ListAssetGroups(page, pageSize int) (*ListAssetGroupsResult, error) {
-	projectName := portrait_setting.VolcPortraitProjectName
+func ListAssetGroups(cred portrait_setting.Credential, page, pageSize int) (*ListAssetGroupsResult, error) {
+	projectName := cred.Project
 	body := map[string]interface{}{
 		"PageNumber":  page,
 		"PageSize":    pageSize,
@@ -145,7 +144,7 @@ func ListAssetGroups(page, pageSize int) (*ListAssetGroupsResult, error) {
 		"ProjectName": projectName,
 	}
 
-	raw, err := callVolcAPI("ListAssetGroups", body)
+	raw, err := callVolcAPI(cred, "ListAssetGroups", body)
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +162,8 @@ type CreateAssetResult struct {
 }
 
 // CreateAsset 在火山引擎注册素材
-func CreateAsset(groupId, assetURL, assetType, name string) (*CreateAssetResult, error) {
-	projectName := portrait_setting.VolcPortraitProjectName
+func CreateAsset(cred portrait_setting.Credential, groupId, assetURL, assetType, name string) (*CreateAssetResult, error) {
+	projectName := cred.Project
 	body := map[string]interface{}{
 		"GroupId":     groupId,
 		"URL":         assetURL,
@@ -175,7 +174,7 @@ func CreateAsset(groupId, assetURL, assetType, name string) (*CreateAssetResult,
 		body["Name"] = name
 	}
 
-	raw, err := callVolcAPI("CreateAsset", body)
+	raw, err := callVolcAPI(cred, "CreateAsset", body)
 	if err != nil {
 		return nil, err
 	}
@@ -211,8 +210,8 @@ type UpdateAssetResult struct {
 }
 
 // UpdateAsset 更新素材名称（火山仅支持更新 Name）
-func UpdateAsset(remoteAssetId, name string) (*UpdateAssetResult, error) {
-	projectName := portrait_setting.VolcPortraitProjectName
+func UpdateAsset(cred portrait_setting.Credential, remoteAssetId, name string) (*UpdateAssetResult, error) {
+	projectName := cred.Project
 	body := map[string]interface{}{
 		"Id":          remoteAssetId,
 		"ProjectName": projectName,
@@ -220,7 +219,7 @@ func UpdateAsset(remoteAssetId, name string) (*UpdateAssetResult, error) {
 	if name != "" {
 		body["Name"] = name
 	}
-	raw, err := callVolcAPI("UpdateAsset", body)
+	raw, err := callVolcAPI(cred, "UpdateAsset", body)
 	if err != nil {
 		return nil, err
 	}
@@ -235,8 +234,8 @@ type UpdateAssetGroupResult struct {
 }
 
 // UpdateAssetGroup 更新素材组名称和描述（火山仅支持更新 Name、Description）
-func UpdateAssetGroup(groupId, name, description string) (*UpdateAssetGroupResult, error) {
-	projectName := portrait_setting.VolcPortraitProjectName
+func UpdateAssetGroup(cred portrait_setting.Credential, groupId, name, description string) (*UpdateAssetGroupResult, error) {
+	projectName := cred.Project
 	body := map[string]interface{}{
 		"Id":          groupId,
 		"ProjectName": projectName,
@@ -247,7 +246,7 @@ func UpdateAssetGroup(groupId, name, description string) (*UpdateAssetGroupResul
 	if description != "" {
 		body["Description"] = description
 	}
-	raw, err := callVolcAPI("UpdateAssetGroup", body)
+	raw, err := callVolcAPI(cred, "UpdateAssetGroup", body)
 	if err != nil {
 		return nil, err
 	}
@@ -257,14 +256,14 @@ func UpdateAssetGroup(groupId, name, description string) (*UpdateAssetGroupResul
 }
 
 // GetAsset 查询素材审核状态
-func GetAsset(remoteAssetId string) (*GetAssetResult, error) {
-	projectName := portrait_setting.VolcPortraitProjectName
+func GetAsset(cred portrait_setting.Credential, remoteAssetId string) (*GetAssetResult, error) {
+	projectName := cred.Project
 	body := map[string]interface{}{
 		"Id":          remoteAssetId,
 		"ProjectName": projectName,
 	}
 
-	raw, err := callVolcAPI("GetAsset", body)
+	raw, err := callVolcAPI(cred, "GetAsset", body)
 	if err != nil {
 		return nil, err
 	}
