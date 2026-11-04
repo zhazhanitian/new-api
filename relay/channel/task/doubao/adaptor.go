@@ -770,6 +770,7 @@ func taskReqToImageReq(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayIn
 		Prompt:         req.Prompt,
 		Size:           req.Size,
 		ResponseFormat: req.ResponseFormat,
+		Watermark:      req.Watermark,
 	}
 
 	// N → *uint
@@ -797,7 +798,8 @@ func taskReqToImageReq(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayIn
 		}
 	}
 
-	// Metadata 中的渠道专属参数（guidance_scale、watermark 等）→ ExtraFields
+	// Metadata 中的渠道专属参数（guidance_scale 等）→ ExtraFields。
+	// 顶层 watermark 已在上面还原，不从 metadata 取。
 	if len(req.Metadata) > 0 {
 		if b, merr := common.Marshal(req.Metadata); merr == nil {
 			imgReq.ExtraFields = b

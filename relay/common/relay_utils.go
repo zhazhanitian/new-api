@@ -284,6 +284,7 @@ func ValidateImageTaskRequest(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		Size:           imgReq.Size,
 		Quality:        imgReq.Quality,
 		ResponseFormat: imgReq.ResponseFormat,
+		Watermark:      imgReq.Watermark,
 		Metadata:       make(map[string]interface{}),
 	}
 	if imgReq.N != nil {

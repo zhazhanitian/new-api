@@ -741,6 +741,9 @@ type TaskSubmitReq struct {
 	OutputCompression int `json:"output_compression,omitempty"`
 	// ResponseFormat 图片返回方式，url 或 b64_json。仅图片。
 	ResponseFormat string `json:"response_format,omitempty"`
+	// Watermark 是否在生成图片上添加水印。仅图片。
+	// 豆包 Seedream 不传时上游默认 true，调用方传 false 必须原样带到上游。
+	Watermark *bool `json:"watermark,omitempty"`
 
 	// Images 输入图片列表。图片的参考图、视频的旧版图片列表都用它。
 	// 新视频请求的素材请写 metadata.content，不要再靠这个字段区分首帧和参考图。
