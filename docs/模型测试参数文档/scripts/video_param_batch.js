@@ -54,7 +54,7 @@ const CASES = [
   { n: 11, model: 'kling-video-3.0', name: '有声1080P x 5秒', expectExpr: 821920, body: { prompt: '雨后街道，霓虹倒映在地面积水上', duration: 5, resolution: '1080P', ratio: '16:9', metadata: { audio_generation: 'Enabled' } } },
   { n: 12, model: 'kling-video-3.0-omni', name: '无参考视频无声', expectExpr: 410960, body: { prompt: '一只猫从窗台跳下，慢动作', ratio: '16:9' } },
   { n: 13, model: 'kling-video-3.0-omni', name: '无参考视频有声', expectExpr: 547945, body: { prompt: '一只猫从窗台跳下，慢动作', duration: 5, resolution: '720P', ratio: '16:9', metadata: { audio_generation: 'Enabled' } } },
-  { n: 14, model: 'kling-video-3.0-omni', name: '参考视频1080P x 5秒', expectExpr: 821920, body: { prompt: '沿用参考视频的主体动作', duration: 5, resolution: '1080P', metadata: { audio_generation: 'Enabled', content: [video()] } } },
+  { n: 14, model: 'kling-video-3.0-omni', name: '有参考视频有声1080P x 5秒', expectExpr: 958905, body: { prompt: '沿用参考视频的主体动作', duration: 5, resolution: '1080P', metadata: { audio_generation: 'Enabled', content: [video()] } } },
   { n: 15, model: 'vidu-video-q2', name: '文生', expectExpr: 219180, body: { prompt: '山间公路，云雾缓慢流动', ratio: '16:9' } },
   { n: 16, model: 'vidu-video-q2', name: '不写role的参考图1080P x 8秒', expectExpr: 898632, body: { prompt: '人物转头微笑，背景轻微虚化', duration: 8, resolution: '1080P', metadata: { content: [image()] } } },
   { n: 17, model: 'vidu-video-q2-pro', name: '首帧', expectExpr: 239725, body: { prompt: '人物从座位上站起来', metadata: { content: [image('first_frame')] } } },

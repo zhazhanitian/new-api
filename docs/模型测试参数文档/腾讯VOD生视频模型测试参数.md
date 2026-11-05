@@ -241,9 +241,9 @@ curl -X POST "$BASE_URL/v1/video/generations" \
   }'
 ```
 
-## 14. `kling-video-3.0-omni` 参考视频 1080P × 5 秒
+## 14. `kling-video-3.0-omni` 有参考视频、有声、1080P × 5 秒
 
-有参考视频时不再分有声无声。表达式值 **821920**，quota **410960**。
+有参考视频且有声走「有参考视频+有声」。表达式值 **958905**，quota **479453**。
 
 ```bash
 curl -X POST "$BASE_URL/v1/video/generations" \

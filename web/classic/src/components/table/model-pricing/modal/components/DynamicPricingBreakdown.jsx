@@ -166,29 +166,55 @@ function parseFixedDurationSeconds(exprStr) {
   // let d = 8;
   const fixed = exprStr.match(/let\s+d\s*=\s*(\d+)\s*;/);
   if (fixed) return Number(fixed[1]);
-  // let d = d0 <= 0 ? 8 : ...
-  const def = exprStr.match(
-    /let\s+d\s*=\s*[^;]*\?\s*(\d+)\s*:/,
-  );
+  // let d = d0 <= 0 ? 5 : (d0 > 15 ? 15 : d0);
+  // 取第一个三元分支，也就是未传时长时的默认秒数。
+  // 贪婪匹配会落到最后的上限（15），把默认预扣显示成 15 秒。
+  const def = exprStr.match(/let\s+d\s*=\s*[^;]*?\?\s*(\d+)\s*:/);
   if (def) return Number(def[1]);
   return null;
 }
 
-/** audio-4K / silent-720_1080P / ref-1080P → 可读档位 */
+const PRICE_DIGITS = 4;
+const PRICE_FACTOR = 10 ** PRICE_DIGITS;
+
+// 先收成展示用的最小单位，再做乘法。否则 2.0000102 显示成 ¥2.0000，
+// 乘 15 秒后却显示 ¥30.0002。
+function toPriceUnits(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * PRICE_FACTOR);
+}
+
+function formatPriceUnits(units, symbol) {
+  const neg = units < 0;
+  const abs = Math.abs(units);
+  const whole = Math.trunc(abs / PRICE_FACTOR);
+  const frac = String(abs % PRICE_FACTOR).padStart(PRICE_DIGITS, '0');
+  return `${neg ? '-' : ''}${symbol}${whole}.${frac}`;
+}
+
+/** noref-silent-4K / ref-audio-1080P / audio-4K → 可读档位。长前缀必须写在前面。 */
+const VIDEO_TIER_KINDS = [
+  ['noref-silent', '无参考视频+无声'],
+  ['noref-audio', '无参考视频+有声'],
+  ['ref-silent', '有参考视频+无声'],
+  ['ref-audio', '有参考视频+有声'],
+  ['audio', '有声'],
+  ['silent', '无声'],
+  ['ref', '有参考视频'],
+];
+
 function humanizeVideoTierLabel(label, t) {
   const raw = String(label || '').trim();
   if (!raw) return { title: t('默认'), detail: '' };
 
-  const kindMap = {
-    audio: t('有声'),
-    silent: t('无声'),
-    ref: t('有参考视频'),
-  };
-
-  const m = raw.match(/^(audio|silent|ref)[-_](.+)$/i);
-  if (m) {
-    const kind = kindMap[m[1].toLowerCase()] || m[1];
-    const res = m[2]
+  const kind = VIDEO_TIER_KINDS.find(([prefix]) =>
+    new RegExp(`^${prefix}[-_]`, 'i').test(raw),
+  );
+  const m = kind
+    ? raw.match(new RegExp(`^${kind[0]}[-_](.+)$`, 'i'))
+    : null;
+  if (m && kind) {
+    const res = m[1]
       .replace(/_/g, '/')
       .replace(/720\/1080P/i, '720P/1080P')
       .replace(/1080p/gi, '1080P')
@@ -197,7 +223,7 @@ function humanizeVideoTierLabel(label, t) {
       .replace(/480p/gi, '480P')
       .replace(/\b2k\b/gi, '2K')
       .replace(/\b4k\b/gi, '4K');
-    return { title: kind, detail: res };
+    return { title: t(kind[1]), detail: res };
   }
 
   if (/^(4K|2K|1080P|720P|540P|480P)$/i.test(raw)) {
@@ -276,7 +302,7 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
           render: (v) =>
             v > 0 ? (
               <Text strong className='text-orange-600'>
-                {`${symbol}${v.toFixed(4)}`}
+                {formatPriceUnits(v, symbol)}
               </Text>
             ) : (
               '-'
@@ -290,7 +316,7 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
                 align: 'right',
                 render: (v) =>
                   v > 0 ? (
-                    <Text strong>{`${symbol}${v.toFixed(4)}`}</Text>
+                    <Text strong>{formatPriceUnits(v, symbol)}</Text>
                   ) : (
                     '-'
                   ),
@@ -331,16 +357,14 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
     ? tiers.map((tier, i) => {
         if (videoUnitBilling) {
           const { title, detail } = humanizeVideoTierLabel(tier.label, t);
-          const unitPrice = quotaToPrice(tier.fixedCost || 0);
+          const unitPrice = toPriceUnits(quotaToPrice(tier.fixedCost || 0));
           return {
             key: `tier-${i}`,
             title,
             detail,
             unitPrice,
             totalPrice:
-              fixedDuration && unitPrice > 0
-                ? unitPrice * fixedDuration
-                : 0,
+              fixedDuration && unitPrice > 0 ? unitPrice * fixedDuration : 0,
           };
         }
         return {
