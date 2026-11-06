@@ -18,13 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { ImagePreview, Layout } from '@douyinfe/semi-ui';
+import { Layout } from '@douyinfe/semi-ui';
 import CardPro from '../../common/ui/CardPro';
 import TaskLogsTable from './TaskLogsTable';
 import TaskLogsActions from './TaskLogsActions';
 import TaskLogsFilters from './TaskLogsFilters';
 import ColumnSelectorModal from './modals/ColumnSelectorModal';
 import ContentModal from './modals/ContentModal';
+import RequestModal from './modals/RequestModal';
+import DetailModal from './modals/DetailModal';
+import ImageResultModal from './modals/ImageResultModal';
 import AudioPreviewModal from './modals/AudioPreviewModal';
 import { useTaskLogsData } from '../../../hooks/task-logs/useTaskLogsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
@@ -39,6 +42,14 @@ const TaskLogsPage = () => {
       {/* Modals */}
       <ColumnSelectorModal {...taskLogsData} />
       <ContentModal {...taskLogsData} isVideo={false} />
+      <RequestModal
+        requestRecord={taskLogsData.requestRecord}
+        setRequestRecord={taskLogsData.setRequestRecord}
+      />
+      <DetailModal
+        detailRecord={taskLogsData.detailRecord}
+        setDetailRecord={taskLogsData.setDetailRecord}
+      />
       {/* 新增：视频预览弹窗 */}
       <ContentModal
         isModalOpen={taskLogsData.isVideoModalOpen}
@@ -46,10 +57,10 @@ const TaskLogsPage = () => {
         modalContent={taskLogsData.videoUrl}
         isVideo={true}
       />
-      <ImagePreview
-        src={taskLogsData.imageUrl}
+      <ImageResultModal
         visible={taskLogsData.isImagePreviewOpen}
-        onVisibleChange={taskLogsData.setIsImagePreviewOpen}
+        url={taskLogsData.imageUrl}
+        onClose={() => taskLogsData.setIsImagePreviewOpen(false)}
       />
       <AudioPreviewModal
         isModalOpen={taskLogsData.isAudioModalOpen}

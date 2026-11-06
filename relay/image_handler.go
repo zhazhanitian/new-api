@@ -43,6 +43,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
 	}
 	adaptor.Init(info)
+	if len(info.UserRequestBody) == 0 {
+		info.UserRequestBody = service.SnapshotUserRequest(c)
+	}
 
 	var requestBody io.Reader
 
@@ -50,6 +53,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		if raw, rawErr := storage.Bytes(); rawErr == nil {
+			info.UpstreamRequestBody = append([]byte(nil), raw...)
 		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
@@ -61,7 +67,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 		switch convertedRequest.(type) {
 		case *bytes.Buffer:
-			requestBody = convertedRequest.(io.Reader)
+			buf := convertedRequest.(*bytes.Buffer)
+			info.UpstreamRequestBody = append([]byte(nil), buf.Bytes()...)
+			requestBody = buf
 		default:
 			jsonData, err := common.Marshal(convertedRequest)
 			if err != nil {
@@ -79,6 +87,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 			if common.DebugEnabled {
 				logger.LogDebug(c, fmt.Sprintf("image request body: %s", string(jsonData)))
 			}
+			info.UpstreamRequestBody = jsonData
 			requestBody = bytes.NewBuffer(jsonData)
 		}
 	}
@@ -92,6 +101,15 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	var httpResp *http.Response
 	if resp != nil {
 		httpResp = resp.(*http.Response)
+		if httpResp.Body != nil {
+			responseBody, readErr := io.ReadAll(httpResp.Body)
+			_ = httpResp.Body.Close()
+			if readErr != nil {
+				return types.NewOpenAIError(readErr, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+			}
+			info.UpstreamResponseBody = responseBody
+			httpResp.Body = io.NopCloser(bytes.NewReader(responseBody))
+		}
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 		if httpResp.StatusCode != http.StatusOK {
 			if httpResp.StatusCode == http.StatusCreated && info.ApiType == constant.APITypeReplicate {

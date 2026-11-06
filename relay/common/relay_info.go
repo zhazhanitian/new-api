@@ -166,6 +166,13 @@ type RelayInfo struct {
 
 	Request dto.Request
 
+	// UserRequestBody 是调用方发给本服务的原始请求，只写入任务日志。
+	UserRequestBody []byte
+	// UpstreamRequestBody 是实际发给上游的请求体，只写入任务日志。
+	UpstreamRequestBody []byte
+	// UpstreamResponseBody 是上游返回的原始响应，只写入任务日志。
+	UpstreamResponseBody []byte
+
 	// RequestConversionChain records request format conversions in order, e.g.
 	// ["openai", "openai_responses"] or ["openai", "claude"].
 	RequestConversionChain []types.RelayFormat

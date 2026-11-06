@@ -20,7 +20,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   Table,
-  Badge,
   Typography,
   Toast,
   Empty,
@@ -32,7 +31,6 @@ import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { Coins } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
 import { isAdmin } from '../../../helpers/utils';
@@ -41,10 +39,10 @@ const { Text } = Typography;
 
 // 状态映射配置
 const STATUS_CONFIG = {
-  success: { type: 'success', key: '成功' },
-  pending: { type: 'warning', key: '待支付' },
-  failed: { type: 'danger', key: '失败' },
-  expired: { type: 'danger', key: '已过期' },
+  success: { color: 'green', key: '成功' },
+  pending: { color: 'orange', key: '待支付' },
+  failed: { color: 'red', key: '失败' },
+  expired: { color: 'red', key: '已过期' },
 };
 
 // 支付方式映射
@@ -53,7 +51,18 @@ const PAYMENT_METHOD_MAP = {
   creem: 'Creem',
   waffo: 'Waffo',
   alipay: '支付宝',
-  wxpay: '微信',
+  wxpay: '微信支付',
+  paycenter: '微信支付',
+};
+
+const columnTitle = (text) => (
+  <span style={{ whiteSpace: 'nowrap' }}>{text}</span>
+);
+
+const formatYuan = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '-';
+  return `¥${amount.toFixed(2)}`;
 };
 
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
@@ -136,12 +145,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   // 渲染状态徽章
   const renderStatusBadge = (status) => {
-    const config = STATUS_CONFIG[status] || { type: 'primary', key: status };
+    const config = STATUS_CONFIG[status] || { color: 'grey', key: status };
     return (
-      <span className='flex items-center gap-2'>
-        <Badge dot type={config.type} />
-        <span>{t(config.key)}</span>
-      </span>
+      <Tag color={config.color} size='small'>
+        {t(config.key)}
+      </Tag>
     );
   };
 
@@ -161,96 +169,107 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   const columns = useMemo(() => {
     const baseColumns = [
+      {
+        title: columnTitle(t('时间')),
+        dataIndex: 'create_time',
+        key: 'create_time',
+        width: 176,
+        render: (time) => (
+          <Text style={{ whiteSpace: 'nowrap' }}>{timestamp2string(time)}</Text>
+        ),
+      },
       ...(userIsAdmin
         ? [
             {
-              title: t('用户ID'),
+              title: columnTitle(t('用户')),
               dataIndex: 'user_id',
               key: 'user_id',
+              width: 72,
               render: (userId) => <Text>{userId ?? '-'}</Text>,
             },
           ]
         : []),
       {
-        title: t('订单号'),
-        dataIndex: 'trade_no',
-        key: 'trade_no',
-        render: (text) => <Text copyable>{text}</Text>,
-      },
-      {
-        title: t('支付方式'),
+        title: columnTitle(t('支付方式')),
         dataIndex: 'payment_method',
         key: 'payment_method',
+        width: 110,
         render: renderPaymentMethod,
       },
       {
-        title: t('充值额度'),
-        dataIndex: 'amount',
-        key: 'amount',
-        render: (amount, record) => {
+        title: columnTitle(t('金额')),
+        dataIndex: 'money',
+        key: 'money',
+        width: 120,
+        render: (money, record) => {
           if (isSubscriptionTopup(record)) {
             return (
-              <Tag color='purple' shape='circle' size='small'>
+              <Tag color='purple' size='small'>
                 {t('订阅套餐')}
               </Tag>
             );
           }
+          const paid = Number(money || 0);
+          const quota = Number(record?.amount || 0);
+          const showQuota = quota > 0 && Math.abs(quota - paid) > 0.001;
           return (
-            <span className='flex items-center gap-1'>
-              <Coins size={16} />
-              <Text>{amount}</Text>
-            </span>
+            <div>
+              <Text strong>{formatYuan(paid)}</Text>
+              {showQuota && (
+                <div
+                  className='text-xs'
+                  style={{ color: 'var(--semi-color-text-2)' }}
+                >
+                  {t('额度')} {formatYuan(quota)}
+                </div>
+              )}
+            </div>
           );
         },
       },
       {
-        title: t('支付金额'),
-        dataIndex: 'money',
-        key: 'money',
-        render: (money) => <Text type='danger'>¥{money.toFixed(2)}</Text>,
-      },
-      {
-        title: t('状态'),
+        title: columnTitle(t('状态')),
         dataIndex: 'status',
         key: 'status',
+        width: 88,
         render: renderStatusBadge,
+      },
+      {
+        title: columnTitle(t('订单号')),
+        dataIndex: 'trade_no',
+        key: 'trade_no',
+        render: (text) => (
+          <Text ellipsis={{ showTooltip: true }} copyable>
+            {text}
+          </Text>
+        ),
       },
     ];
 
-    // 管理员才显示操作列
-    if (userIsAdmin) {
+    const hasPending = topups.some((record) => record.status === 'pending');
+    if (userIsAdmin && hasPending) {
       baseColumns.push({
-        title: t('操作'),
+        title: columnTitle(t('操作')),
         key: 'action',
+        width: 88,
         render: (_, record) => {
-          const actions = [];
-          if (record.status === 'pending') {
-            actions.push(
-              <Button
-                key="complete"
-                size='small'
-                type='primary'
-                theme='outline'
-                onClick={() => confirmAdminComplete(record.trade_no)}
-              >
-                {t('补单')}
-              </Button>
-            );
-          }
-          return actions.length > 0 ? <>{actions}</> : null;
+          if (record.status !== 'pending') return null;
+          return (
+            <Button
+              size='small'
+              type='primary'
+              theme='light'
+              onClick={() => confirmAdminComplete(record.trade_no)}
+            >
+              {t('补单')}
+            </Button>
+          );
         },
       });
     }
 
-    baseColumns.push({
-      title: t('创建时间'),
-      dataIndex: 'create_time',
-      key: 'create_time',
-      render: (time) => timestamp2string(time),
-    });
-
     return baseColumns;
-  }, [t, userIsAdmin]);
+  }, [t, userIsAdmin, topups]);
 
   return (
     <Modal
@@ -258,7 +277,8 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       visible={visible}
       onCancel={onCancel}
       footer={null}
-      size={isMobile ? 'full-width' : 'large'}
+      width={isMobile ? '100%' : 920}
+      bodyStyle={{ paddingBottom: 16 }}
     >
       <div className='mb-3'>
         <Input
@@ -283,7 +303,6 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
           onPageChange: handlePageChange,
           onPageSizeChange: handlePageSizeChange,
         }}
-        size='small'
         empty={
           <Empty
             image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}

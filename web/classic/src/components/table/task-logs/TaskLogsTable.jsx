@@ -42,8 +42,11 @@ const TaskLogsTable = (taskLogsData) => {
     openVideoModal,
     openImagePreview,
     openAudioModal,
+    openRequestModal,
+    openDetailModal,
     showUserInfoFunc,
     isAdminUser,
+    isRootUser,
     t,
     COLUMN_KEYS,
   } = taskLogsData;
@@ -58,10 +61,13 @@ const TaskLogsTable = (taskLogsData) => {
       openVideoModal,
       openImagePreview,
       openAudioModal,
+      openRequestModal,
+      openDetailModal,
       showUserInfoFunc,
       isAdminUser,
+      isRootUser,
     });
-  }, [t, COLUMN_KEYS, copyText, openContentModal, openVideoModal, openImagePreview, openAudioModal, showUserInfoFunc, isAdminUser]);
+  }, [t, COLUMN_KEYS, copyText, openContentModal, openVideoModal, openImagePreview, openAudioModal, openRequestModal, openDetailModal, showUserInfoFunc, isAdminUser, isRootUser]);
 
   // Filter columns based on visibility settings
   const getVisibleColumns = () => {
@@ -84,7 +90,7 @@ const TaskLogsTable = (taskLogsData) => {
       dataSource={logs}
       rowKey='key'
       loading={loading}
-      scroll={compactMode ? undefined : { x: 'max-content' }}
+      scroll={compactMode ? undefined : { x: 1820 }}
       className='rounded-xl overflow-hidden'
       size='middle'
       empty={

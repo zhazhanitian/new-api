@@ -17,7 +17,7 @@ const CurrentComplianceTermsVersion = "v1"
 
 // 默认配置
 var paymentSetting = PaymentSetting{
-	AmountOptions:  []int{10, 20, 50, 100, 200, 500},
+	AmountOptions:  []int{10, 50, 100, 500, 1000, 3000},
 	AmountDiscount: map[int]float64{},
 }
 
@@ -30,7 +30,7 @@ func GetPaymentSetting() *PaymentSetting {
 	return &paymentSetting
 }
 
+// 二次开发关闭支付合规确认。支付、兑换码、订阅和邀请返利不再受该开关限制。
 func IsPaymentComplianceConfirmed() bool {
-	return paymentSetting.ComplianceConfirmed &&
-		paymentSetting.ComplianceTermsVersion == CurrentComplianceTermsVersion
+	return true
 }

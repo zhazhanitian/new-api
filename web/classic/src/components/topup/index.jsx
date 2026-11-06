@@ -28,6 +28,7 @@ import {
   renderQuotaWithAmount,
   copy,
   getQuotaPerUnit,
+  getCurrencyConfig,
 } from '../../helpers';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
@@ -39,6 +40,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import PayCenterQrModal from './modals/PayCenterQrModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -75,6 +77,8 @@ const TopUp = () => {
   const [waffoMinTopUp, setWaffoMinTopUp] = useState(1);
   const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
   const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
+  const [enablePayCenterTopUp, setEnablePayCenterTopUp] = useState(false);
+  const [payCenterOrder, setPayCenterOrder] = useState(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
@@ -144,6 +148,9 @@ const TopUp = () => {
     if (typeof payment === 'string' && payment.startsWith('waffo:')) {
       return getWaffoAmount(value);
     }
+    if (payment === 'paycenter') {
+      return getPayCenterAmount(value);
+    }
     return getAmount(value);
   };
 
@@ -207,6 +214,11 @@ const TopUp = () => {
         showError(t('管理员未开启 Waffo 充值！'));
         return;
       }
+    } else if (payment === 'paycenter') {
+      if (!enablePayCenterTopUp) {
+        showError(t('管理员未开启微信支付！'));
+        return;
+      }
     } else {
       if (!enableOnlineTopUp) {
         showError(t('管理员未开启在线充值！'));
@@ -232,6 +244,78 @@ const TopUp = () => {
     }
   };
 
+  const closePayCenterOrder = async (tradeNo) => {
+    if (!tradeNo) return '';
+    try {
+      const res = await API.post(
+        `/api/user/paycenter/orders/${encodeURIComponent(tradeNo)}/close`,
+      );
+      if (res?.data?.message === 'success') {
+        return res.data.data?.status || '';
+      }
+    } catch (error) {
+      // 关单失败不阻塞新的支付。
+    }
+    return '';
+  };
+
+  const handlePayCenterCancel = async () => {
+    const tradeNo = payCenterOrder?.tradeNo;
+    setPayCenterOrder(null);
+    if ((await closePayCenterOrder(tradeNo)) === 'success') {
+      showSuccess(t('充值成功'));
+      await getUserQuota();
+    }
+  };
+
+  const handlePayCenterSuccess = async () => {
+    setPayCenterOrder(null);
+    showSuccess(t('充值成功'));
+    await getUserQuota();
+  };
+
+  const payCenterTopUp = async () => {
+    if (!enablePayCenterTopUp) {
+      showError(t('管理员未开启微信支付！'));
+      return;
+    }
+    const selectedMinTopUp = getPaymentMinTopUp('paycenter');
+    if (topUpCount < selectedMinTopUp) {
+      showError(t('充值数量不能小于') + selectedMinTopUp);
+      return;
+    }
+    setConfirmLoading(true);
+    try {
+      if (payCenterOrder?.tradeNo) {
+        const previousStatus = await closePayCenterOrder(payCenterOrder.tradeNo);
+        setPayCenterOrder(null);
+        if (previousStatus === 'success') {
+          showSuccess(t('充值成功'));
+          await getUserQuota();
+        }
+      }
+      const res = await API.post('/api/user/paycenter/pay', {
+        amount: parseInt(topUpCount),
+      });
+      const { message, data } = res.data || {};
+      if (message === 'success' && data?.code_url && data?.trade_no) {
+        setPayCenterOrder({
+          codeUrl: data.code_url,
+          tradeNo: data.trade_no,
+        });
+        setOpen(false);
+      } else {
+        const errorMsg =
+          typeof data === 'string' ? data : message || t('支付失败');
+        showError(errorMsg);
+      }
+    } catch (err) {
+      showError(t('支付请求失败'));
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   const onlineTopUp = async () => {
     if (payWay === 'waffo_pancake') {
       setConfirmLoading(true);
@@ -241,6 +325,11 @@ const TopUp = () => {
         setOpen(false);
         setConfirmLoading(false);
       }
+      return;
+    }
+
+    if (payWay === 'paycenter') {
+      await payCenterTopUp();
       return;
     }
 
@@ -639,6 +728,7 @@ const TopUp = () => {
           const enableWaffoTopUp = data.enable_waffo_topup || false;
           const enableWaffoPancakeTopUp =
             data.enable_waffo_pancake_topup || false;
+          const enablePayCenter = data.enable_paycenter_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
@@ -647,7 +737,9 @@ const TopUp = () => {
                 ? data.waffo_min_topup
                 : enableWaffoPancakeTopUp
                   ? data.waffo_pancake_min_topup
-                  : 1;
+                  : enablePayCenter
+                    ? data.paycenter_min_topup
+                    : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
@@ -655,6 +747,13 @@ const TopUp = () => {
           setWaffoPayMethods(data.waffo_pay_methods || []);
           setWaffoMinTopUp(data.waffo_min_topup || 1);
           setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
+          setEnablePayCenterTopUp(enablePayCenter);
+          if (!enableOnlineTopUp && enablePayCenter) {
+            const unitPrice = Number(data.paycenter_unit_price);
+            if (Number.isFinite(unitPrice) && unitPrice > 0) {
+              setPriceRatio(unitPrice);
+            }
+          }
           setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
@@ -682,7 +781,11 @@ const TopUp = () => {
           }
 
           // 初始化显示实付金额
-          getAmount(minTopUpValue);
+          if (!enableOnlineTopUp && enablePayCenter) {
+            getPayCenterAmount(minTopUpValue);
+          } else {
+            getAmount(minTopUpValue);
+          }
         } catch (e) {
           setPayMethods([]);
         }
@@ -783,6 +886,32 @@ const TopUp = () => {
     return amount + ' ' + t('元');
   };
 
+  const getPayCenterAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
+    }
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/paycenter/amount', {
+        amount: parseInt(value),
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          setAmount(parseFloat(data));
+        } else {
+          setAmount(0);
+          Toast.error({ content: '错误：' + data, id: 'getPayCenterAmount' });
+        }
+      } else {
+        showError(res);
+      }
+    } catch (err) {
+      // amount fetch failed silently
+    }
+    setAmountLoading(false);
+  };
+
   const getAmount = async (value) => {
     if (value === undefined) {
       value = topUpCount;
@@ -864,7 +993,16 @@ const TopUp = () => {
 
     // 计算实际支付金额，考虑折扣
     const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
-    const discountedAmount = preset.value * priceRatio * discount;
+    const yuanFace =
+      getCurrencyConfig().type === 'CNY' &&
+      enablePayCenterTopUp &&
+      !enableOnlineTopUp &&
+      !enableStripeTopUp &&
+      !enableWaffoTopUp &&
+      !enableWaffoPancakeTopUp;
+    const discountedAmount = yuanFace
+      ? preset.value * discount
+      : preset.value * priceRatio * discount;
     setAmount(discountedAmount);
   };
 
@@ -897,6 +1035,13 @@ const TopUp = () => {
       />
 
       {/* 充值确认模态框 */}
+      <PayCenterQrModal
+        t={t}
+        order={payCenterOrder}
+        onCancel={handlePayCenterCancel}
+        onSuccess={handlePayCenterSuccess}
+      />
+
       <PaymentConfirmModal
         t={t}
         open={open}
@@ -949,7 +1094,7 @@ const TopUp = () => {
       </Modal>
 
       {/* 主布局区域 */}
-      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+      <div className='grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.9fr)]'>
         <RechargeCard
           t={t}
           enableOnlineTopUp={enableOnlineTopUp}
@@ -959,6 +1104,7 @@ const TopUp = () => {
           creemPreTopUp={creemPreTopUp}
           enableWaffoTopUp={enableWaffoTopUp}
           enableWaffoPancakeTopUp={enableWaffoPancakeTopUp}
+          enablePayCenterTopUp={enablePayCenterTopUp}
           presetAmounts={presetAmounts}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}
@@ -967,7 +1113,12 @@ const TopUp = () => {
           topUpCount={topUpCount}
           minTopUp={minTopUp}
           renderQuotaWithAmount={renderQuotaWithAmount}
-          getAmount={getAmount}
+          getAmount={
+            !enableOnlineTopUp && enablePayCenterTopUp
+              ? getPayCenterAmount
+              : getAmount
+          }
+          quoteAmount={requestAmountByPayment}
           setTopUpCount={setTopUpCount}
           setSelectedPreset={setSelectedPreset}
           renderAmount={renderAmount}

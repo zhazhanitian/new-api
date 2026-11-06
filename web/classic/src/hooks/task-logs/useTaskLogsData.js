@@ -24,6 +24,7 @@ import {
   API,
   copy,
   isAdmin,
+  isRoot,
   showError,
   showSuccess,
   timestamp2string,
@@ -47,6 +48,8 @@ export const useTaskLogsData = () => {
     TASK_STATUS: 'task_status',
     PROGRESS: 'progress',
     FAIL_REASON: 'fail_reason',
+    REQUEST: 'request',
+    RAW: 'raw',
     RESULT_URL: 'result_url',
   };
 
@@ -59,14 +62,19 @@ export const useTaskLogsData = () => {
 
   // User and admin
   const isAdminUser = isAdmin();
+  const isRootUser = isRoot();
   // Role-specific storage key to prevent different roles from overwriting each other
-  const STORAGE_KEY = isAdminUser
-    ? 'task-logs-table-columns-admin'
-    : 'task-logs-table-columns-user';
+  const STORAGE_KEY = isRootUser
+    ? 'task-logs-table-columns-root'
+    : isAdminUser
+      ? 'task-logs-table-columns-admin'
+      : 'task-logs-table-columns-user';
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState('');
+  const [requestRecord, setRequestRecord] = useState(null);
+  const [detailRecord, setDetailRecord] = useState(null);
 
   // 新增：视频预览弹窗状态
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
@@ -107,7 +115,10 @@ export const useTaskLogsData = () => {
 
   // Load saved column preferences from localStorage
   useEffect(() => {
-    const savedColumns = localStorage.getItem(STORAGE_KEY);
+    let savedColumns = localStorage.getItem(STORAGE_KEY);
+    if (!savedColumns && isRootUser) {
+      savedColumns = localStorage.getItem('task-logs-table-columns-admin');
+    }
     if (savedColumns) {
       try {
         const parsed = JSON.parse(savedColumns);
@@ -118,6 +129,9 @@ export const useTaskLogsData = () => {
         if (!isAdminUser) {
           merged[COLUMN_KEYS.CHANNEL] = false;
           merged[COLUMN_KEYS.USERNAME] = false;
+        }
+        if (!isRootUser) {
+          merged[COLUMN_KEYS.RAW] = false;
         }
         setVisibleColumns(merged);
       } catch (e) {
@@ -143,6 +157,8 @@ export const useTaskLogsData = () => {
       [COLUMN_KEYS.TASK_STATUS]: true,
       [COLUMN_KEYS.PROGRESS]: true,
       [COLUMN_KEYS.FAIL_REASON]: true,
+      [COLUMN_KEYS.REQUEST]: true,
+      [COLUMN_KEYS.RAW]: isRootUser,
       [COLUMN_KEYS.RESULT_URL]: true,
     };
   };
@@ -170,6 +186,8 @@ export const useTaskLogsData = () => {
         (key === COLUMN_KEYS.CHANNEL || key === COLUMN_KEYS.USERNAME) &&
         !isAdminUser
       ) {
+        updatedColumns[key] = false;
+      } else if (key === COLUMN_KEYS.RAW && !isRootUser) {
         updatedColumns[key] = false;
       } else {
         updatedColumns[key] = checked;
@@ -279,6 +297,14 @@ export const useTaskLogsData = () => {
     setIsModalOpen(true);
   };
 
+  const openRequestModal = (record) => {
+    setRequestRecord(record || null);
+  };
+
+  const openDetailModal = (record) => {
+    setDetailRecord(record || null);
+  };
+
   // 新增：打开视频预览弹窗
   const openVideoModal = (url) => {
     setVideoUrl(url);
@@ -326,11 +352,16 @@ export const useTaskLogsData = () => {
     logCount,
     pageSize,
     isAdminUser,
+    isRootUser,
 
     // Modal state
     isModalOpen,
     setIsModalOpen,
     modalContent,
+    requestRecord,
+    setRequestRecord,
+    detailRecord,
+    setDetailRecord,
 
     // 新增：视频弹窗状态
     isVideoModalOpen,
@@ -378,6 +409,8 @@ export const useTaskLogsData = () => {
     refresh,
     copyText,
     openContentModal,
+    openRequestModal,
+    openDetailModal,
     openVideoModal,
     openImagePreview,
     openAudioModal,

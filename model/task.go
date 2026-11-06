@@ -63,6 +63,11 @@ type Task struct {
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
+	// 调用方原始请求和发给上游的请求体。只给任务日志查询，不进入对外任务接口。
+	// 图片等二进制内容在写入前会被替换成长度说明。
+	UserRequest      json.RawMessage `json:"-" gorm:"column:user_request;type:json"`
+	UpstreamRequest  json.RawMessage `json:"-" gorm:"column:upstream_request;type:json"`
+	UpstreamResponse json.RawMessage `json:"-" gorm:"column:upstream_response;type:json"`
 }
 
 func (t *Task) SetData(data any) {
@@ -111,11 +116,11 @@ type TaskPrivateData struct {
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
-	ModelPrice      float64            `json:"model_price,omitempty"`       // 模型单价
-	GroupRatio      float64            `json:"group_ratio,omitempty"`       // 分组倍率
-	ModelRatio      float64            `json:"model_ratio,omitempty"`       // 模型倍率
-	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
-	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
+	ModelPrice        float64            `json:"model_price,omitempty"`         // 模型单价
+	GroupRatio        float64            `json:"group_ratio,omitempty"`         // 分组倍率
+	ModelRatio        float64            `json:"model_ratio,omitempty"`         // 模型倍率
+	OtherRatios       map[string]float64 `json:"other_ratios,omitempty"`        // 附加倍率（时长、分辨率等）
+	OriginModelName   string             `json:"origin_model_name,omitempty"`   // 模型名称，必须为OriginModelName
 	PerCallBilling    bool               `json:"per_call_billing,omitempty"`    // 按次计费：跳过轮询阶段的差额结算
 	RequestedN        int                `json:"requested_n,omitempty"`         // 请求生成的图片数（用于生图少图比例退款）
 	BilledDurationSec float64            `json:"billed_duration_sec,omitempty"` // 预扣时使用的计费时长（秒），用于完成时按实际时长多退少补

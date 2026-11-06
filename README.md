@@ -27,6 +27,7 @@
 启动后访问：`http://localhost:9006`
 
 脚本做了什么：
+
 1. 用 `docker-compose.dev.yml` 启动 PostgreSQL 和 Redis
 2. 构建前端（`web/classic`，使用 bun）
 3. 用 air 启动后端并监听 `.go` 文件，自动注入本地数据库/Redis 连接串
@@ -46,7 +47,7 @@
 终端 2，前端：
 
 ```bash
-cd web/classic
+cd web/classic && bun run dev
 bun run dev
 ```
 

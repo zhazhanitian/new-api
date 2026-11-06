@@ -340,6 +340,18 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "PayCenterBaseURL":
+		option.Value = strings.TrimRight(strings.TrimSpace(option.Value.(string)), "/")
+	case "PayCenterProductCode":
+		option.Value = strings.TrimSpace(option.Value.(string))
+	case "PayCenterApiKey", "PayCenterNotifyKey":
+		if strings.TrimSpace(option.Value.(string)) == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "",
+			})
+			return
+		}
 	}
 	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {

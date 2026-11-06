@@ -19,16 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Avatar,
   Typography,
   Card,
   Button,
   Banner,
   Skeleton,
   Form,
-  Space,
-  Row,
-  Col,
   Spin,
   Tooltip,
   Tag,
@@ -38,7 +34,6 @@ import {
 import { SiAlipay, SiWechat, SiStripe } from 'react-icons/si';
 import {
   CreditCard,
-  Coins,
   Wallet,
   BarChart2,
   TrendingUp,
@@ -68,6 +63,7 @@ const RechargeCard = ({
   minTopUp,
   renderQuotaWithAmount,
   getAmount,
+  quoteAmount,
   setTopUpCount,
   setSelectedPreset,
   renderAmount,
@@ -89,6 +85,7 @@ const RechargeCard = ({
   onOpenHistory,
   enableWaffoTopUp,
   enableWaffoPancakeTopUp,
+  enablePayCenterTopUp,
   subscriptionLoading = false,
   subscriptionPlans = [],
   billingPreference,
@@ -105,7 +102,87 @@ const RechargeCard = ({
   const [activeTab, setActiveTab] = useState('topup');
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
-  const regularPayMethods = payMethods || [];
+  const [pickedPayMethod, setPickedPayMethod] = useState('');
+
+  const isPayMethodDisabled = (payMethod) => {
+    const minTopupVal = Number(payMethod.min_topup) || 0;
+    const isStripe = payMethod.type === 'stripe';
+    const isWaffo =
+      typeof payMethod.type === 'string' && payMethod.type.startsWith('waffo:');
+    const isWaffoPancake = payMethod.type === 'waffo_pancake';
+    const isPayCenter = payMethod.type === 'paycenter';
+    return (
+      (!enableOnlineTopUp &&
+        !isStripe &&
+        !isWaffo &&
+        !isWaffoPancake &&
+        !isPayCenter) ||
+      (!enableStripeTopUp && isStripe) ||
+      (!enableWaffoTopUp && isWaffo) ||
+      (!enableWaffoPancakeTopUp && isWaffoPancake) ||
+      (!enablePayCenterTopUp && isPayCenter) ||
+      minTopupVal > Number(topUpCount || 0)
+    );
+  };
+
+  const regularPayMethods = (payMethods || []).filter((method) => {
+    if (enablePayCenterTopUp && method.type === 'wxpay') return false;
+    return !isPayMethodDisabled(method);
+  });
+
+  const activePayMethod = regularPayMethods.some(
+    (method) =>
+      method.type === pickedPayMethod && !isPayMethodDisabled(method),
+  )
+    ? pickedPayMethod
+    : regularPayMethods.find((method) => !isPayMethodDisabled(method))?.type ||
+      '';
+
+  const showYuanFace =
+    enablePayCenterTopUp &&
+    !enableOnlineTopUp &&
+    !enableStripeTopUp &&
+    !enableWaffoTopUp &&
+    !enableWaffoPancakeTopUp &&
+    getCurrencyConfig().type === 'CNY';
+
+  const refreshQuote = (value, method) => {
+    const payMethod = method || activePayMethod;
+    if (quoteAmount && payMethod) {
+      return quoteAmount(payMethod, value);
+    }
+    return getAmount(value);
+  };
+
+  const renderPayMethodIcon = (payMethod) => {
+    if (payMethod.type === 'alipay') {
+      return <SiAlipay size={18} color='#1677FF' />;
+    }
+    if (payMethod.type === 'wxpay' || payMethod.type === 'paycenter') {
+      return <SiWechat size={18} color='#07C160' />;
+    }
+    if (payMethod.type === 'stripe') {
+      return <SiStripe size={18} color='#635BFF' />;
+    }
+    if (payMethod.icon) {
+      return (
+        <img
+          src={payMethod.icon}
+          alt=''
+          style={{ width: 18, height: 18, objectFit: 'contain' }}
+        />
+      );
+    }
+    if (payMethod.type === 'waffo_pancake') {
+      return <CreditCard size={18} color='var(--semi-color-primary)' />;
+    }
+    return (
+      <CreditCard
+        size={18}
+        color={payMethod.color || 'var(--semi-color-text-2)'}
+      />
+    );
+  };
 
   useEffect(() => {
     if (initialTabSetRef.current) return;
@@ -120,462 +197,411 @@ const RechargeCard = ({
     }
   }, [shouldShowSubscription, activeTab]);
   const topupContent = (
-    <Space vertical style={{ width: '100%' }}>
-      {/* 统计数据 */}
-      <Card
-        className='!rounded-xl w-full'
-        cover={
+    <div className='flex flex-col gap-5'>
+      <div
+        className='grid grid-cols-3 overflow-hidden rounded-2xl'
+        style={{ border: '1px solid var(--semi-color-border)' }}
+      >
+        {[
+          {
+            label: t('当前余额'),
+            value: renderQuota(userState?.user?.quota),
+            icon: <Wallet size={14} />,
+          },
+          {
+            label: t('历史消耗'),
+            value: renderQuota(userState?.user?.used_quota),
+            icon: <TrendingUp size={14} />,
+          },
+          {
+            label: t('请求次数'),
+            value: userState?.user?.request_count || 0,
+            icon: <BarChart2 size={14} />,
+          },
+        ].map((item, index) => (
           <div
-            className='relative h-30'
+            key={item.label}
+            className='px-3 py-4 sm:px-4'
             style={{
-              '--palette-primary-darkerChannel': '37 99 235',
-              backgroundImage: `linear-gradient(0deg, rgba(var(--palette-primary-darkerChannel) / 80%), rgba(var(--palette-primary-darkerChannel) / 80%)), url('/cover-4.webp')`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
+              background: 'var(--semi-color-fill-0)',
+              borderLeft:
+                index === 0 ? 'none' : '1px solid var(--semi-color-border)',
             }}
           >
-            <div className='relative z-10 h-full flex flex-col justify-between p-4'>
-              <div className='flex justify-between items-center'>
-                <Text strong style={{ color: 'white', fontSize: '16px' }}>
-                  {t('账户统计')}
-                </Text>
-              </div>
-
-              {/* 统计数据 */}
-              <div className='grid grid-cols-3 gap-6 mt-4'>
-                {/* 当前余额 */}
-                <div className='text-center'>
-                  <div
-                    className='text-base sm:text-2xl font-bold mb-2'
-                    style={{ color: 'white' }}
-                  >
-                    {renderQuota(userState?.user?.quota)}
-                  </div>
-                  <div className='flex items-center justify-center text-sm'>
-                    <Wallet
-                      size={14}
-                      className='mr-1'
-                      style={{ color: 'rgba(255,255,255,0.8)' }}
-                    />
-                    <Text
-                      style={{
-                        color: 'rgba(255,255,255,0.8)',
-                        fontSize: '12px',
-                      }}
-                    >
-                      {t('当前余额')}
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 历史消耗 */}
-                <div className='text-center'>
-                  <div
-                    className='text-base sm:text-2xl font-bold mb-2'
-                    style={{ color: 'white' }}
-                  >
-                    {renderQuota(userState?.user?.used_quota)}
-                  </div>
-                  <div className='flex items-center justify-center text-sm'>
-                    <TrendingUp
-                      size={14}
-                      className='mr-1'
-                      style={{ color: 'rgba(255,255,255,0.8)' }}
-                    />
-                    <Text
-                      style={{
-                        color: 'rgba(255,255,255,0.8)',
-                        fontSize: '12px',
-                      }}
-                    >
-                      {t('历史消耗')}
-                    </Text>
-                  </div>
-                </div>
-
-                {/* 请求次数 */}
-                <div className='text-center'>
-                  <div
-                    className='text-base sm:text-2xl font-bold mb-2'
-                    style={{ color: 'white' }}
-                  >
-                    {userState?.user?.request_count || 0}
-                  </div>
-                  <div className='flex items-center justify-center text-sm'>
-                    <BarChart2
-                      size={14}
-                      className='mr-1'
-                      style={{ color: 'rgba(255,255,255,0.8)' }}
-                    />
-                    <Text
-                      style={{
-                        color: 'rgba(255,255,255,0.8)',
-                        fontSize: '12px',
-                      }}
-                    >
-                      {t('请求次数')}
-                    </Text>
-                  </div>
-                </div>
-              </div>
+            <div
+              className='mb-2 flex items-center gap-1 text-xs'
+              style={{ color: 'var(--semi-color-text-2)' }}
+            >
+              {item.icon}
+              {item.label}
+            </div>
+            <div
+              className='truncate text-lg font-semibold sm:text-2xl'
+              style={{ color: 'var(--semi-color-text-0)' }}
+            >
+              {item.value}
             </div>
           </div>
-        }
-      >
-        {/* 在线充值表单 */}
-        {statusLoading ? (
-          <div className='py-8 flex justify-center'>
-            <Spin size='large' />
-          </div>
-        ) : enableOnlineTopUp ||
-          enableStripeTopUp ||
-          enableCreemTopUp ||
-          enableWaffoTopUp ||
-          enableWaffoPancakeTopUp ? (
-          <Form
-            getFormApi={(api) => (onlineFormApiRef.current = api)}
-            initValues={{ topUpCount: topUpCount }}
-          >
-            <div className='space-y-6'>
-              {(enableOnlineTopUp ||
-                enableStripeTopUp ||
-                enableWaffoTopUp ||
-                enableWaffoPancakeTopUp) && (
-                <Row gutter={12}>
-                  <Col xs={24} sm={24} md={24} lg={10} xl={10}>
-                    <Form.InputNumber
-                      field='topUpCount'
-                      label={t('充值数量')}
-                      disabled={
-                        !enableOnlineTopUp &&
-                        !enableStripeTopUp &&
-                        !enableWaffoTopUp &&
-                        !enableWaffoPancakeTopUp
-                      }
-                      placeholder={
-                        t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
-                      }
-                      value={topUpCount}
-                      min={minTopUp}
-                      max={999999999}
-                      step={1}
-                      precision={0}
-                      onChange={async (value) => {
-                        if (value && value >= 1) {
-                          setTopUpCount(value);
-                          setSelectedPreset(null);
-                          await getAmount(value);
-                        }
-                      }}
-                      onBlur={(e) => {
-                        const value = parseInt(e.target.value);
-                        if (!value || value < 1) {
-                          setTopUpCount(1);
-                          getAmount(1);
-                        }
-                      }}
-                      formatter={(value) => (value ? `${value}` : '')}
-                      parser={(value) =>
-                        value ? parseInt(value.replace(/[^\d]/g, '')) : 0
-                      }
-                      extraText={
-                        <Skeleton
-                          loading={showAmountSkeleton}
-                          active
-                          placeholder={
-                            <Skeleton.Title
-                              style={{
-                                width: 120,
-                                height: 20,
-                                borderRadius: 6,
-                              }}
-                            />
-                          }
-                        >
-                          <Text type='secondary' className='text-red-600'>
-                            {t('实付金额：')}
-                            <span style={{ color: 'red' }}>
-                              {renderAmount()}
-                            </span>
-                          </Text>
-                        </Skeleton>
-                      }
-                      style={{ width: '100%' }}
-                    />
-                  </Col>
-                  {regularPayMethods.length > 0 && (
-                    <Col xs={24} sm={24} md={24} lg={14} xl={14}>
-                      <Form.Slot label={t('选择支付方式')}>
-                        <Space wrap>
-                          {regularPayMethods.map((payMethod) => {
-                            const minTopupVal =
-                              Number(payMethod.min_topup) || 0;
-                            const isStripe = payMethod.type === 'stripe';
-                            const isWaffo =
-                              typeof payMethod.type === 'string' &&
-                              payMethod.type.startsWith('waffo:');
-                            const isWaffoPancake =
-                              payMethod.type === 'waffo_pancake';
-                            const disabled =
-                              (!enableOnlineTopUp &&
-                                !isStripe &&
-                                !isWaffo &&
-                                !isWaffoPancake) ||
-                              (!enableStripeTopUp && isStripe) ||
-                              (!enableWaffoTopUp && isWaffo) ||
-                              (!enableWaffoPancakeTopUp && isWaffoPancake) ||
-                              minTopupVal > Number(topUpCount || 0);
+        ))}
+      </div>
 
-                            const buttonEl = (
-                              <Button
-                                key={payMethod.type}
-                                theme='outline'
-                                type='tertiary'
-                                onClick={() => preTopUp(payMethod.type)}
-                                disabled={disabled}
-                                loading={
-                                  paymentLoading && payWay === payMethod.type
-                                }
-                                icon={
-                                  payMethod.type === 'alipay' ? (
-                                    <SiAlipay size={18} color='#1677FF' />
-                                  ) : payMethod.type === 'wxpay' ? (
-                                    <SiWechat size={18} color='#07C160' />
-                                  ) : payMethod.type === 'stripe' ? (
-                                    <SiStripe size={18} color='#635BFF' />
-                                  ) : payMethod.icon ? (
-                                    <img
-                                      src={payMethod.icon}
-                                      alt={payMethod.name}
-                                      style={{
-                                        width: 18,
-                                        height: 18,
-                                        objectFit: 'contain',
-                                      }}
-                                    />
-                                  ) : payMethod.type === 'waffo_pancake' ? (
-                                    <CreditCard
-                                      size={18}
-                                      color='var(--semi-color-primary)'
-                                    />
-                                  ) : (
-                                    <CreditCard
-                                      size={18}
-                                      color={
-                                        payMethod.color ||
-                                        'var(--semi-color-text-2)'
-                                      }
-                                    />
-                                  )
-                                }
-                                className='!rounded-lg !px-4 !py-2'
-                              >
-                                {payMethod.name}
-                              </Button>
-                            );
-
-                            return disabled &&
-                              minTopupVal > Number(topUpCount || 0) ? (
-                              <Tooltip
-                                content={
-                                  t('此支付方式最低充值金额为') +
-                                  ' ' +
-                                  minTopupVal
-                                }
-                                key={payMethod.type}
-                              >
-                                {buttonEl}
-                              </Tooltip>
-                            ) : (
-                              <React.Fragment key={payMethod.type}>
-                                {buttonEl}
-                              </React.Fragment>
-                            );
-                          })}
-                        </Space>
-                      </Form.Slot>
-                    </Col>
-                  )}
-                </Row>
-              )}
-
-              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
-                <Form.Slot
-                  label={
-                    <div className='flex items-center gap-2'>
-                      <span>{t('选择充值额度')}</span>
-                      {(() => {
-                        const { symbol, rate, type } = getCurrencyConfig();
-                        if (type === 'USD') return null;
-
-                        return (
-                          <span
-                            style={{
-                              color: 'var(--semi-color-text-2)',
-                              fontSize: '12px',
-                              fontWeight: 'normal',
-                            }}
-                          >
-                            (1 $ = {rate.toFixed(2)} {symbol})
-                          </span>
-                        );
-                      })()}
-                    </div>
-                  }
-                >
-                  <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2'>
-                    {presetAmounts.map((preset, index) => {
-                      const discount =
-                        preset.discount ||
-                        topupInfo?.discount?.[preset.value] ||
-                        1.0;
-                      const originalPrice = preset.value * priceRatio;
-                      const discountedPrice = originalPrice * discount;
-                      const hasDiscount = discount < 1.0;
-                      const actualPay = discountedPrice;
-                      const save = originalPrice - discountedPrice;
-
-                      // 根据当前货币类型换算显示金额和数量
-                      const { symbol, rate, type } = getCurrencyConfig();
-                      const statusStr = localStorage.getItem('status');
-                      let usdRate = 7; // 默认CNY汇率
-                      try {
-                        if (statusStr) {
-                          const s = JSON.parse(statusStr);
-                          usdRate = s?.usd_exchange_rate || 7;
-                        }
-                      } catch (e) {}
-
-                      let displayValue = preset.value; // 显示的数量
-                      let displayActualPay = actualPay;
-                      let displaySave = save;
-
-                      if (type === 'USD') {
-                        // 数量保持USD，价格从CNY转USD
-                        displayActualPay = actualPay / usdRate;
-                        displaySave = save / usdRate;
-                      } else if (type === 'CNY') {
-                        // 数量转CNY，价格已是CNY
-                        displayValue = preset.value * usdRate;
-                      } else if (type === 'CUSTOM') {
-                        // 数量和价格都转自定义货币
-                        displayValue = preset.value * rate;
-                        displayActualPay = (actualPay / usdRate) * rate;
-                        displaySave = (save / usdRate) * rate;
-                      }
-
-                      return (
-                        <Card
-                          key={index}
-                          style={{
-                            cursor: 'pointer',
-                            border:
-                              selectedPreset === preset.value
-                                ? '2px solid var(--semi-color-primary)'
-                                : '1px solid var(--semi-color-border)',
-                            height: '100%',
-                            width: '100%',
-                          }}
-                          bodyStyle={{ padding: '12px' }}
-                          onClick={() => {
-                            selectPresetAmount(preset);
-                            onlineFormApiRef.current?.setValue(
-                              'topUpCount',
-                              preset.value,
-                            );
-                          }}
-                        >
-                          <div style={{ textAlign: 'center' }}>
-                            <Typography.Title
-                              heading={6}
-                              style={{ margin: '0 0 8px 0' }}
-                            >
-                              <Coins size={18} />
-                              {formatLargeNumber(displayValue)} {symbol}
-                              {hasDiscount && (
-                                <Tag style={{ marginLeft: 4 }} color='green'>
-                                  {t('折').includes('off')
-                                    ? (
-                                        (1 - parseFloat(discount)) *
-                                        100
-                                      ).toFixed(1)
-                                    : (discount * 10).toFixed(1)}
-                                  {t('折')}
-                                </Tag>
-                              )}
-                            </Typography.Title>
-                            <div
-                              style={{
-                                color: 'var(--semi-color-text-2)',
-                                fontSize: '12px',
-                                margin: '4px 0',
-                              }}
-                            >
-                              {t('实付')} {symbol}
-                              {displayActualPay.toFixed(2)}，
-                              {hasDiscount
-                                ? `${t('节省')} ${symbol}${displaySave.toFixed(2)}`
-                                : `${t('节省')} ${symbol}0.00`}
-                            </div>
-                          </div>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                </Form.Slot>
-              )}
-
-              {/* Creem 充值区域 */}
-              {enableCreemTopUp && creemProducts.length > 0 && (
-                <Form.Slot label={t('Creem 充值')}>
-                  <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3'>
-                    {creemProducts.map((product, index) => (
-                      <Card
-                        key={index}
-                        onClick={() => creemPreTopUp(product)}
-                        className='cursor-pointer !rounded-2xl transition-all hover:shadow-md border-gray-200 hover:border-gray-300'
-                        bodyStyle={{ textAlign: 'center', padding: '16px' }}
-                      >
-                        <div className='font-medium text-lg mb-2'>
-                          {product.name}
-                        </div>
-                        <div className='text-sm text-gray-600 mb-2'>
-                          {t('充值额度')}: {product.quota}
-                        </div>
-                        <div className='text-lg font-semibold text-blue-600'>
-                          {product.currency === 'EUR' ? '€' : '$'}
-                          {product.price}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </Form.Slot>
-              )}
-            </div>
-          </Form>
-        ) : (
-          <Banner
-            type='info'
-            description={t(
-              '管理员未开启在线充值功能，请联系管理员开启或使用兑换码充值。',
-            )}
-            className='!rounded-xl'
-            closeIcon={null}
-          />
-        )}
-      </Card>
-
-      {/* 兑换码充值 */}
-      {enableRedemption ? (
-        <Card
-          className='!rounded-xl w-full'
-          title={
-            <Text type='tertiary' strong>
-              {t('兑换码充值')}
-            </Text>
-          }
+      {statusLoading ? (
+        <div className='flex justify-center py-8'>
+          <Spin size='large' />
+        </div>
+      ) : enableOnlineTopUp ||
+        enableStripeTopUp ||
+        enableCreemTopUp ||
+        enableWaffoTopUp ||
+        enableWaffoPancakeTopUp ||
+        enablePayCenterTopUp ? (
+        <Form
+          getFormApi={(api) => (onlineFormApiRef.current = api)}
+          initValues={{ topUpCount: topUpCount }}
         >
+          <div className='flex flex-col gap-5'>
+            {(enableOnlineTopUp ||
+              enableStripeTopUp ||
+              enableWaffoTopUp ||
+              enablePayCenterTopUp) && (
+              <div>
+                <div className='mb-3 flex flex-wrap items-center gap-2'>
+                  <Text strong>{t('选择额度')}</Text>
+                  {!showYuanFace &&
+                    (() => {
+                      const { symbol, rate, type } = getCurrencyConfig();
+                      if (type === 'USD') return null;
+                      return (
+                        <Text type='tertiary' size='small'>
+                          1 $ = {rate.toFixed(2)} {symbol}
+                        </Text>
+                      );
+                    })()}
+                </div>
+                <div className='grid grid-cols-2 gap-3 sm:grid-cols-3'>
+                  {presetAmounts.map((preset, index) => {
+                    const discount =
+                      preset.discount ||
+                      topupInfo?.discount?.[preset.value] ||
+                      1.0;
+                    const originalPrice = preset.value * priceRatio;
+                    const discountedPrice = originalPrice * discount;
+                    const hasDiscount = discount < 1.0;
+                    const actualPay = discountedPrice;
+
+                    const { symbol, rate, type } = getCurrencyConfig();
+                    const statusStr = localStorage.getItem('status');
+                    let usdRate = 7;
+                    try {
+                      if (statusStr) {
+                        const s = JSON.parse(statusStr);
+                        usdRate = s?.usd_exchange_rate || 7;
+                      }
+                    } catch (e) {}
+
+                    let displayValue = preset.value;
+                    let displayActualPay = actualPay;
+
+                    if (showYuanFace) {
+                      displayValue = preset.value;
+                      displayActualPay = preset.value * discount;
+                    } else if (type === 'USD') {
+                      displayActualPay = actualPay / usdRate;
+                    } else if (type === 'CNY') {
+                      displayValue = preset.value * usdRate;
+                    } else if (type === 'CUSTOM') {
+                      displayValue = preset.value * rate;
+                      displayActualPay = (actualPay / usdRate) * rate;
+                    }
+
+                    const selected = selectedPreset === preset.value;
+                    return (
+                      <button
+                        key={index}
+                        type='button'
+                        onClick={() => {
+                          selectPresetAmount(preset);
+                          onlineFormApiRef.current?.setValue(
+                            'topUpCount',
+                            preset.value,
+                          );
+                          refreshQuote(preset.value);
+                        }}
+                        className='rounded-xl px-3 py-4 text-left'
+                        style={{
+                          border: selected
+                            ? '2px solid var(--semi-color-primary)'
+                            : '1px solid var(--semi-color-border)',
+                          background: selected
+                            ? 'var(--semi-color-primary-light-default)'
+                            : 'var(--semi-color-bg-0)',
+                        }}
+                      >
+                        <div className='flex items-center justify-between gap-2'>
+                          <span
+                            className='text-lg font-semibold'
+                            style={{ color: 'var(--semi-color-text-0)' }}
+                          >
+                            {symbol}
+                            {formatLargeNumber(displayValue)}
+                          </span>
+                          {hasDiscount && (
+                            <Tag color='green' size='small'>
+                              {t('折').includes('off')
+                                ? ((1 - parseFloat(discount)) * 100).toFixed(1)
+                                : (discount * 10).toFixed(1)}
+                              {t('折')}
+                            </Tag>
+                          )}
+                        </div>
+                        {hasDiscount && (
+                          <div
+                            className='mt-1 text-xs'
+                            style={{ color: 'var(--semi-color-text-2)' }}
+                          >
+                            {t('实付')} {symbol}
+                            {displayActualPay.toFixed(2)}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {(enableOnlineTopUp ||
+              enableStripeTopUp ||
+              enableWaffoTopUp ||
+              enableWaffoPancakeTopUp ||
+              enablePayCenterTopUp) && (
+              <Form.InputNumber
+                field='topUpCount'
+                label={t(showYuanFace ? '充值金额' : '自定义数量')}
+                disabled={
+                  !enableOnlineTopUp &&
+                  !enableStripeTopUp &&
+                  !enableWaffoTopUp &&
+                  !enableWaffoPancakeTopUp &&
+                  !enablePayCenterTopUp
+                }
+                placeholder={t('输入数量')}
+                value={topUpCount}
+                min={minTopUp}
+                max={999999999}
+                step={1}
+                precision={0}
+                onChange={async (value) => {
+                  if (value && value >= 1) {
+                    setTopUpCount(value);
+                    setSelectedPreset(null);
+                    await refreshQuote(value);
+                  }
+                }}
+                onBlur={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (!value || value < 1) {
+                    setTopUpCount(1);
+                    refreshQuote(1);
+                  }
+                }}
+                formatter={(value) => (value ? `${value}` : '')}
+                parser={(value) =>
+                  value ? parseInt(value.replace(/[^\d]/g, '')) : 0
+                }
+                extraText={
+                  <Text type='tertiary' size='small'>
+                    {t('最低')} {renderQuotaWithAmount(minTopUp)}
+                  </Text>
+                }
+                style={{ width: '100%' }}
+              />
+            )}
+
+            {regularPayMethods.length > 0 && (
+              <div>
+                <div className='mb-3'>
+                  <Text strong>{t('支付方式')}</Text>
+                </div>
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                  {regularPayMethods.map((payMethod) => {
+                    const disabled = isPayMethodDisabled(payMethod);
+                    const selected = activePayMethod === payMethod.type;
+                    const minTopupVal = Number(payMethod.min_topup) || 0;
+                    const buttonEl = (
+                      <button
+                        type='button'
+                        disabled={disabled}
+                        onClick={() => {
+                          if (disabled) return;
+                          setPickedPayMethod(payMethod.type);
+                          refreshQuote(topUpCount, payMethod.type);
+                        }}
+                        className='flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left'
+                        style={{
+                          border: selected
+                            ? '2px solid var(--semi-color-primary)'
+                            : '1px solid var(--semi-color-border)',
+                          background: selected
+                            ? 'var(--semi-color-primary-light-default)'
+                            : 'var(--semi-color-bg-0)',
+                          opacity: disabled ? 0.45 : 1,
+                          cursor: disabled ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {renderPayMethodIcon(payMethod)}
+                        <span
+                          className='min-w-0 flex-1 truncate text-sm font-medium'
+                          style={{ color: 'var(--semi-color-text-0)' }}
+                        >
+                          {payMethod.name}
+                        </span>
+                        <span
+                          className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full'
+                          style={{
+                            border: selected
+                              ? 'none'
+                              : '1px solid var(--semi-color-border)',
+                            background: selected
+                              ? 'var(--semi-color-primary)'
+                              : 'transparent',
+                          }}
+                        >
+                          {selected && (
+                            <span className='h-1.5 w-1.5 rounded-full bg-white' />
+                          )}
+                        </span>
+                      </button>
+                    );
+
+                    if (disabled && minTopupVal > Number(topUpCount || 0)) {
+                      return (
+                        <Tooltip
+                          content={
+                            t('此支付方式最低充值金额为') + ' ' + minTopupVal
+                          }
+                          key={payMethod.type}
+                        >
+                          <span className='block'>{buttonEl}</span>
+                        </Tooltip>
+                      );
+                    }
+                    return (
+                      <React.Fragment key={payMethod.type}>
+                        {buttonEl}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {enableCreemTopUp && creemProducts.length > 0 && (
+              <div>
+                <div className='mb-3'>
+                  <Text strong>{t('Creem 充值')}</Text>
+                </div>
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                  {creemProducts.map((product, index) => (
+                    <button
+                      key={index}
+                      type='button'
+                      onClick={() => creemPreTopUp(product)}
+                      className='rounded-xl px-4 py-4 text-left'
+                      style={{
+                        border: '1px solid var(--semi-color-border)',
+                        background: 'var(--semi-color-bg-0)',
+                      }}
+                    >
+                      <div
+                        className='font-medium'
+                        style={{ color: 'var(--semi-color-text-0)' }}
+                      >
+                        {product.name}
+                      </div>
+                      <div
+                        className='mt-1 text-sm'
+                        style={{ color: 'var(--semi-color-text-2)' }}
+                      >
+                        {t('充值额度')}: {product.quota}
+                      </div>
+                      <div
+                        className='mt-2 text-lg font-semibold'
+                        style={{ color: 'var(--semi-color-primary)' }}
+                      >
+                        {product.currency === 'EUR' ? '€' : '$'}
+                        {product.price}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {regularPayMethods.length > 0 && (
+              <div
+                className='flex flex-col gap-4 rounded-2xl px-4 py-4 sm:flex-row sm:items-center sm:justify-between'
+                style={{ background: 'var(--semi-color-fill-0)' }}
+              >
+                <div>
+                  <div
+                    className='mb-1 text-xs'
+                    style={{ color: 'var(--semi-color-text-2)' }}
+                  >
+                    {t('应付金额')}
+                  </div>
+                  <Skeleton
+                    loading={showAmountSkeleton}
+                    active
+                    placeholder={
+                      <Skeleton.Title
+                        style={{ width: 120, height: 28, borderRadius: 6 }}
+                      />
+                    }
+                  >
+                    <div
+                      className='text-2xl font-semibold'
+                      style={{ color: 'var(--semi-color-text-0)' }}
+                    >
+                      {renderAmount()}
+                    </div>
+                  </Skeleton>
+                </div>
+                <Button
+                  theme='solid'
+                  type='primary'
+                  size='large'
+                  htmlType='button'
+                  disabled={!activePayMethod}
+                  loading={paymentLoading && payWay === activePayMethod}
+                  onClick={() => preTopUp(activePayMethod)}
+                  className='!rounded-xl sm:!px-8'
+                >
+                  {t('立即充值')}
+                </Button>
+              </div>
+            )}
+          </div>
+        </Form>
+      ) : (
+        <Banner
+          type='info'
+          description={t(
+            '管理员未开启在线充值功能，请联系管理员开启或使用兑换码充值。',
+          )}
+          className='!rounded-xl'
+          closeIcon={null}
+        />
+      )}
+
+      {enableRedemption ? (
+        <div
+          className='rounded-2xl px-4 py-4'
+          style={{ border: '1px solid var(--semi-color-border)' }}
+        >
+          <Text strong className='mb-3 block'>
+            {t('兑换码')}
+          </Text>
           <Form
             getFormApi={(api) => (redeemFormApiRef.current = api)}
             initValues={{ redemptionCode: redemptionCode }}
@@ -588,16 +614,15 @@ const RechargeCard = ({
               onChange={(value) => setRedemptionCode(value)}
               prefix={<IconGift />}
               suffix={
-                <div className='flex items-center gap-2'>
-                  <Button
-                    type='primary'
-                    theme='solid'
-                    onClick={topUp}
-                    loading={isSubmitting}
-                  >
-                    {t('兑换额度')}
-                  </Button>
-                </div>
+                <Button
+                  type='primary'
+                  theme='solid'
+                  htmlType='button'
+                  onClick={topUp}
+                  loading={isSubmitting}
+                >
+                  {t('兑换')}
+                </Button>
               }
               showClear
               style={{ width: '100%' }}
@@ -618,7 +643,7 @@ const RechargeCard = ({
               }
             />
           </Form>
-        </Card>
+        </div>
       ) : (
         <Banner
           type='warning'
@@ -627,27 +652,21 @@ const RechargeCard = ({
           className='!rounded-xl'
         />
       )}
-    </Space>
+    </div>
   );
+
 
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
-      <div className='flex items-center justify-between mb-4'>
-        <div className='flex items-center'>
-          <Avatar size='small' color='blue' className='mr-3 shadow-md'>
-            <CreditCard size={16} />
-          </Avatar>
-          <div>
-            <Typography.Text className='text-lg font-medium'>
-              {t('账户充值')}
-            </Typography.Text>
-            <div className='text-xs'>{t('多种充值方式，安全便捷')}</div>
-          </div>
-        </div>
+      <div className='mb-5 flex items-center justify-between'>
+        <Typography.Title heading={5} style={{ margin: 0 }}>
+          {t('账户充值')}
+        </Typography.Title>
         <Button
           icon={<Receipt size={16} />}
-          theme='solid'
+          theme='light'
+          type='tertiary'
           onClick={onOpenHistory}
         >
           {t('账单')}

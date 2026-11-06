@@ -498,6 +498,7 @@ func RelayTask(c *gin.Context) {
 		})
 		return
 	}
+	relayInfo.UserRequestBody = service.SnapshotUserRequest(c)
 
 	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
 		respondTaskError(c, taskErr)
@@ -601,6 +602,7 @@ func RelayTask(c *gin.Context) {
 		}
 		bgTask.Quota = result.Quota
 		bgTask.Action = relayInfo.Action
+		service.AttachTaskRequestLogs(bgTask, relayInfo.UserRequestBody, relayInfo.UpstreamRequestBody, relayInfo.UpstreamResponseBody)
 		if insertErr := bgTask.Insert(); insertErr != nil {
 			common.SysError("insert background task error: " + insertErr.Error())
 		}
@@ -651,6 +653,7 @@ func RelayTask(c *gin.Context) {
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
+		service.AttachTaskRequestLogs(task, relayInfo.UserRequestBody, relayInfo.UpstreamRequestBody, relayInfo.UpstreamResponseBody)
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}
@@ -673,6 +676,7 @@ func RelayTask(c *gin.Context) {
 	}
 
 	if taskErr != nil {
+		service.RecordFailedTaskSubmit(c, relayInfo, taskErr)
 		respondTaskError(c, taskErr)
 	}
 }

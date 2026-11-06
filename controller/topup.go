@@ -74,6 +74,25 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	enablePayCenter := isPayCenterTopUpEnabled()
+	if enablePayCenter {
+		hasPayCenter := false
+		for _, method := range payMethods {
+			if method["type"] == "paycenter" {
+				hasPayCenter = true
+				break
+			}
+		}
+		if !hasPayCenter {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "微信支付",
+				"type":      "paycenter",
+				"color":     "rgba(var(--semi-green-5), 1)",
+				"min_topup": strconv.Itoa(setting.PayCenterMinTopUp),
+			})
+		}
+	}
+
 	enableWaffoPancake := isWaffoPancakeTopUpEnabled()
 	if enableWaffoPancake {
 		hasWaffoPancake := false
@@ -100,6 +119,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_paycenter_topup":           enablePayCenter,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
@@ -115,6 +135,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"stripe_min_topup":        setting.StripeMinTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
+		"paycenter_min_topup":     setting.PayCenterMinTopUp,
+		"paycenter_unit_price":    setting.PayCenterUnitPrice,
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
@@ -146,6 +168,10 @@ func GetEpayClient() *epay.Client {
 }
 
 func getPayMoney(amount int64, group string) float64 {
+	return getPayMoneyWithPrice(amount, group, operation_setting.Price)
+}
+
+func getPayMoneyWithPrice(amount int64, group string, price float64) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
@@ -160,7 +186,7 @@ func getPayMoney(amount int64, group string) float64 {
 	}
 
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
-	dPrice := decimal.NewFromFloat(operation_setting.Price)
+	dPrice := decimal.NewFromFloat(price)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
 	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
@@ -176,7 +202,14 @@ func getPayMoney(amount int64, group string) float64 {
 }
 
 func getMinTopup() int64 {
-	minTopup := operation_setting.MinTopUp
+	return scaleMinTopup(operation_setting.MinTopUp)
+}
+
+func getPayCenterMinTopup() int64 {
+	return scaleMinTopup(setting.PayCenterMinTopUp)
+}
+
+func scaleMinTopup(minTopup int) int64 {
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)

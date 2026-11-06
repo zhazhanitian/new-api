@@ -214,11 +214,11 @@ export default function SettingsGeneralPayment(props) {
                 field='AmountOptions'
                 label={t('自定义充值数量选项')}
                 placeholder={t(
-                  '为一个 JSON 数组，例如：[10, 20, 50, 100, 200, 500]',
+                  '为一个 JSON 数组，例如：[10, 50, 100, 500, 1000, 3000]',
                 )}
                 autosize
                 extraText={t(
-                  '设置用户可选择的充值数量选项，例如：[10, 20, 50, 100, 200, 500]',
+                  '设置用户可选择的充值数量选项，例如：[10, 50, 100, 500, 1000, 3000]',
                 )}
               />
             </Col>

@@ -290,15 +290,30 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
 	}
+	upstreamBody, requestBody, err := service.CaptureReader(requestBody)
+	if err != nil {
+		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
+	}
+	if len(upstreamBody) > 0 {
+		info.UpstreamRequestBody = upstreamBody
+	}
 
 	// 9. 发送请求
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
+	if resp != nil && resp.Body != nil {
+		responseBody, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, service.TaskErrorWrapper(readErr, "read_response_body_failed", http.StatusInternalServerError)
+		}
+		info.UpstreamResponseBody = responseBody
+		resp.Body = io.NopCloser(bytes.NewReader(responseBody))
+	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(resp.Body)
-		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(info.UpstreamResponseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
 
 	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
@@ -360,6 +375,12 @@ func RunBackgroundTask(task *model.Task, adaptor channel.BackgroundTaskAdaptor, 
 	ctx := context.Background()
 
 	resultURL, rawBody, err := adaptor.ExecuteBackgroundTask(info)
+	if len(info.UpstreamRequestBody) > 0 {
+		task.UpstreamRequest = service.SanitizeRequestLog(info.UpstreamRequestBody)
+	}
+	if len(rawBody) > 0 {
+		task.UpstreamResponse = service.SanitizeRequestLog(rawBody)
+	}
 
 	task.FinishTime = time.Now().Unix()
 

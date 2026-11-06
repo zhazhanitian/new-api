@@ -240,6 +240,11 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 			task.Progress = "100%"
 		}
 		task.Data = responseItem.Data
+		if itemBody, marshalErr := common.Marshal(responseItem); marshalErr == nil {
+			if sanitized := SanitizeRequestLog(itemBody); len(sanitized) > 0 {
+				task.UpstreamResponse = sanitized
+			}
+		}
 
 		err = task.Update()
 		if err != nil {
@@ -374,6 +379,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
+	if sanitized := SanitizeRequestLog(responseBody); len(sanitized) > 0 {
+		task.UpstreamResponse = sanitized
+	}
 
 	snap := task.Snapshot()
 
@@ -390,6 +398,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		taskResult.Reason = t.FailReason
 		task.Data = t.Data
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
+		if updateErr := task.Update(); updateErr != nil {
+			logger.LogError(ctx, fmt.Sprintf("save upstream response failed for task %s: %s", taskId, updateErr.Error()))
+		}
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
 

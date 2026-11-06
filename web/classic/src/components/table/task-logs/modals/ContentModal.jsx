@@ -22,6 +22,7 @@ import { Modal, Button, Typography, Spin } from '@douyinfe/semi-ui';
 import { IconExternalOpen, IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import JsonCodeBlock from '../../../common/JsonCodeBlock';
+import ResultUrlBlock from './ResultUrlBlock';
 
 const { Text } = Typography;
 
@@ -67,25 +68,7 @@ const ContentModal = ({
             type='tertiary'
             style={{ display: 'block', marginBottom: '16px' }}
           >
-            {t('视频无法在当前浏览器中播放，这可能是由于：')}
-          </Text>
-          <Text
-            type='tertiary'
-            style={{ display: 'block', marginBottom: '8px', fontSize: '12px' }}
-          >
-            {t('• 视频服务商的跨域限制')}
-          </Text>
-          <Text
-            type='tertiary'
-            style={{ display: 'block', marginBottom: '8px', fontSize: '12px' }}
-          >
-            {t('• 需要特定的请求头或认证')}
-          </Text>
-          <Text
-            type='tertiary'
-            style={{ display: 'block', marginBottom: '16px', fontSize: '12px' }}
-          >
-            {t('• 防盗链保护机制')}
+            {t('视频打不开。记录里的地址还在，但这是上游的临时链接，过期后文件就会返回拒绝，预览就没有画面。')}
           </Text>
 
           <div style={{ marginTop: '20px' }}>
@@ -101,21 +84,7 @@ const ContentModal = ({
             </Button>
           </div>
 
-          <div
-            style={{
-              marginTop: '16px',
-              padding: '8px',
-              backgroundColor: '#f8f9fa',
-              borderRadius: '4px',
-            }}
-          >
-            <Text
-              type='tertiary'
-              style={{ fontSize: '10px', wordBreak: 'break-all' }}
-            >
-              {modalContent}
-            </Text>
-          </div>
+          <ResultUrlBlock url={modalContent} />
         </div>
       );
     }

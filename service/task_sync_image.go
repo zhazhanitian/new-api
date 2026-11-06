@@ -107,6 +107,7 @@ func RecordSyncImageTask(c *gin.Context, info *relaycommon.RelayInfo, apiErr *ty
 	task.PrivateData.BillingSource = info.BillingSource
 	task.PrivateData.SubscriptionId = info.SubscriptionId
 	task.PrivateData.TokenId = info.TokenId
+	AttachTaskRequestLogs(task, info.UserRequestBody, info.UpstreamRequestBody, info.UpstreamResponseBody)
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
 		ModelPrice:      info.PriceData.ModelPrice,
 		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,

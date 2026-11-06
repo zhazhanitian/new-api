@@ -6,6 +6,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/service/paycenter"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -37,12 +40,14 @@ const (
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
+	PaymentProviderPayCenter    = "paycenter"
 )
 
 var (
-	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
-	ErrTopUpNotFound         = errors.New("topup not found")
-	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
+	ErrPaymentMethodMismatch   = errors.New("payment method mismatch")
+	ErrTopUpNotFound           = errors.New("topup not found")
+	ErrTopUpStatusInvalid      = errors.New("topup status invalid")
+	ErrPayCenterAmountMismatch = errors.New("paycenter amount mismatch")
 )
 
 func (topUp *TopUp) Insert() error {
@@ -387,6 +392,120 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
 	return nil
 }
+
+func topUpTradeNoColumn() string {
+	if common.UsingPostgreSQL {
+		return `"trade_no"`
+	}
+	return "`trade_no`"
+}
+
+// CompletePayCenterTopUp 在行锁内入账。已成功时直接返回，避免回调和轮询重复加额度。
+func CompletePayCenterTopUp(tradeNo string, amountFen int64, callerIp string) error {
+	if tradeNo == "" {
+		return ErrTopUpNotFound
+	}
+
+	var userId int
+	var quotaToAdd int
+	var payMoney float64
+	var paymentMethod string
+	credited := false
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(topUpTradeNoColumn()+" = ?", tradeNo).First(topUp).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
+		}
+		if topUp.PaymentProvider != PaymentProviderPayCenter {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		if paycenter.YuanToFen(topUp.Money) != amountFen {
+			return ErrPayCenterAmountMismatch
+		}
+
+		dAmount := decimal.NewFromInt(topUp.Amount)
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		quotaDecimal := dAmount.Mul(dQuotaPerUnit)
+		if operation_setting.IsCNYDisplay() {
+			if setting.PayCenterUnitPrice <= 0 {
+				return errors.New("支付中心单价未配置")
+			}
+			// 订单上的数量是用户支付的人民币，按单价折成额度。
+			quotaDecimal = dAmount.Div(decimal.NewFromFloat(setting.PayCenterUnitPrice)).Mul(dQuotaPerUnit)
+		}
+		quotaToAdd = int(quotaDecimal.Round(0).IntPart())
+		if quotaToAdd <= 0 {
+			return errors.New("无效的充值额度")
+		}
+
+		topUp.CompleteTime = common.GetTimestamp()
+		topUp.Status = common.TopUpStatusSuccess
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
+			return err
+		}
+
+		userId = topUp.UserId
+		payMoney = topUp.Money
+		paymentMethod = topUp.PaymentMethod
+		credited = true
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !credited {
+		return nil
+	}
+	if cacheErr := InvalidateUserCache(userId); cacheErr != nil {
+		common.SysError("paycenter invalidate user cache failed: " + cacheErr.Error())
+	}
+	RecordTopupLog(userId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), payMoney), callerIp, paymentMethod, PaymentProviderPayCenter)
+	return nil
+}
+
+// MarkPayCenterTopUpIfPending 只把仍待支付的支付中心订单标成失败或过期。
+func MarkPayCenterTopUpIfPending(tradeNo string, userId int, status string) error {
+	if tradeNo == "" {
+		return ErrTopUpNotFound
+	}
+	if status != common.TopUpStatusFailed && status != common.TopUpStatusExpired {
+		return ErrTopUpStatusInvalid
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(topUpTradeNoColumn()+" = ?", tradeNo).First(topUp).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
+		}
+		if topUp.UserId != userId || topUp.PaymentProvider != PaymentProviderPayCenter {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return nil
+		}
+		topUp.Status = status
+		return tx.Save(topUp).Error
+	})
+}
+
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")

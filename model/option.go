@@ -78,6 +78,13 @@ func InitOptionMap() {
 	common.OptionMap["CustomCallbackAddress"] = ""
 	common.OptionMap["EpayId"] = ""
 	common.OptionMap["EpayKey"] = ""
+	common.OptionMap["PayCenterEnabled"] = strconv.FormatBool(setting.PayCenterEnabled)
+	common.OptionMap["PayCenterBaseURL"] = setting.PayCenterBaseURL
+	common.OptionMap["PayCenterApiKey"] = setting.PayCenterApiKey
+	common.OptionMap["PayCenterNotifyKey"] = setting.PayCenterNotifyKey
+	common.OptionMap["PayCenterProductCode"] = setting.PayCenterProductCode
+	common.OptionMap["PayCenterUnitPrice"] = strconv.FormatFloat(setting.PayCenterUnitPrice, 'f', -1, 64)
+	common.OptionMap["PayCenterMinTopUp"] = strconv.Itoa(setting.PayCenterMinTopUp)
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
@@ -368,6 +375,24 @@ func updateOptionMap(key string, value string) (err error) {
 		operation_setting.EpayId = value
 	case "EpayKey":
 		operation_setting.EpayKey = value
+	case "PayCenterEnabled":
+		setting.PayCenterEnabled = value == "true"
+	case "PayCenterBaseURL":
+		setting.PayCenterBaseURL = strings.TrimRight(strings.TrimSpace(value), "/")
+	case "PayCenterApiKey":
+		if strings.TrimSpace(value) != "" {
+			setting.PayCenterApiKey = value
+		}
+	case "PayCenterNotifyKey":
+		if strings.TrimSpace(value) != "" {
+			setting.PayCenterNotifyKey = value
+		}
+	case "PayCenterProductCode":
+		setting.PayCenterProductCode = strings.TrimSpace(value)
+	case "PayCenterUnitPrice":
+		setting.PayCenterUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "PayCenterMinTopUp":
+		setting.PayCenterMinTopUp, _ = strconv.Atoi(value)
 	case "Price":
 		operation_setting.Price, _ = strconv.ParseFloat(value, 64)
 	case "USDExchangeRate":

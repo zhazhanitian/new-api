@@ -690,6 +690,7 @@ func (a *TaskAdaptor) ExecuteBackgroundTask(info *relaycommon.RelayInfo) (result
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal image request failed: %w", err)
 	}
+	info.UpstreamRequestBody = data
 
 	// ── 打印上游请求入参（排查用） ────────────────────────────────────────────
 	logger.LogInfo(context.Background(), fmt.Sprintf("[BackgroundTask] upstream request: model=%s url=%s/api/v3/images/generations body=%s",

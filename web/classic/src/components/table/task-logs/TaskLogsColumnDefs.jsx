@@ -66,7 +66,7 @@ const colors = [
 ];
 
 // Render functions
-const renderTimestamp = (timestampInSeconds) => {
+export const renderTimestamp = (timestampInSeconds) => {
   const date = new Date(timestampInSeconds * 1000); // 从秒转换为毫秒
 
   const year = date.getFullYear(); // 获取年份
@@ -79,7 +79,7 @@ const renderTimestamp = (timestampInSeconds) => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`; // 格式化输出
 };
 
-function renderDuration(submit_time, finishTime) {
+export function renderDuration(submit_time, finishTime) {
   if (!submit_time || !finishTime) return 'N/A';
   const durationSec = finishTime - submit_time;
   const color = durationSec > 60 ? 'red' : 'green';
@@ -92,7 +92,7 @@ function renderDuration(submit_time, finishTime) {
   );
 }
 
-const renderType = (type, t) => {
+export const renderType = (type, t) => {
   switch (type) {
     case 'MUSIC':
       return (
@@ -151,7 +151,7 @@ const renderType = (type, t) => {
   }
 };
 
-const renderPlatform = (platform, t) => {
+export const renderPlatform = (platform, t) => {
   let option = CHANNEL_OPTIONS.find(
     (opt) => String(opt.value) === String(platform),
   );
@@ -178,7 +178,7 @@ const renderPlatform = (platform, t) => {
   }
 };
 
-const renderStatus = (type, t) => {
+export const renderStatus = (type, t) => {
   switch (type) {
     case 'SUCCESS':
       return (
@@ -250,6 +250,9 @@ export const getTaskLogsColumns = ({
   openVideoModal,
   openImagePreview,
   openAudioModal,
+  openRequestModal,
+  openDetailModal,
+  isRootUser,
 }) => {
   return [
     {
@@ -343,16 +346,9 @@ export const getTaskLogsColumns = ({
       key: COLUMN_KEYS.TASK_ID,
       title: t('任务ID'),
       dataIndex: 'task_id',
-      render: (text, record, index) => {
+      render: (text) => {
         return (
-          <Typography.Text
-            ellipsis={{ showTooltip: true }}
-            onClick={() => {
-              openContentModal(JSON.stringify(record, null, 2));
-            }}
-          >
-            <div>{text}</div>
-          </Typography.Text>
+          <Typography.Text ellipsis={{ showTooltip: true }}>{text}</Typography.Text>
         );
       },
     },
@@ -368,6 +364,7 @@ export const getTaskLogsColumns = ({
       key: COLUMN_KEYS.PROGRESS,
       title: t('进度'),
       dataIndex: 'progress',
+      width: 180,
       render: (text, record, index) => {
         return (
           <div>
@@ -392,8 +389,9 @@ export const getTaskLogsColumns = ({
     },
     {
       key: COLUMN_KEYS.FAIL_REASON,
-      title: t('详情'),
+      title: t('预览'),
       dataIndex: 'fail_reason',
+      width: 148,
       fixed: 'right',
       render: (text, record, index) => {
         // Suno audio preview
@@ -406,6 +404,7 @@ export const getTaskLogsColumns = ({
           return (
             <a
               href='#'
+              style={{ whiteSpace: 'nowrap' }}
               onClick={(e) => {
                 e.preventDefault();
                 openAudioModal(record.data);
@@ -432,6 +431,7 @@ export const getTaskLogsColumns = ({
           return (
             <a
               href='#'
+              style={{ whiteSpace: 'nowrap' }}
               onClick={(e) => {
                 e.preventDefault();
                 openImagePreview(resultUrl);
@@ -445,6 +445,7 @@ export const getTaskLogsColumns = ({
           return (
             <a
               href='#'
+              style={{ whiteSpace: 'nowrap' }}
               onClick={(e) => {
                 e.preventDefault();
                 openVideoModal(resultUrl);
@@ -466,6 +467,44 @@ export const getTaskLogsColumns = ({
             }}
           >
             {text}
+          </Typography.Text>
+        );
+      },
+    },
+    {
+      key: COLUMN_KEYS.REQUEST,
+      title: t('详情'),
+      dataIndex: 'user_request',
+      width: 96,
+      fixed: 'right',
+      render: (text, record) => {
+        return (
+          <Typography.Text link onClick={() => openDetailModal(record)}>
+            {t('查看详情')}
+          </Typography.Text>
+        );
+      },
+    },
+    {
+      key: COLUMN_KEYS.RAW,
+      title: t('原文'),
+      dataIndex: 'upstream_request',
+      width: 96,
+      fixed: 'right',
+      render: (text, record) => {
+        if (!isRootUser) {
+          return null;
+        }
+        const hasRaw =
+          record.user_request ||
+          record.upstream_request ||
+          record.upstream_response;
+        if (!hasRaw) {
+          return <Typography.Text type='tertiary'>{t('无记录')}</Typography.Text>;
+        }
+        return (
+          <Typography.Text link onClick={() => openRequestModal(record)}>
+            {t('查看原文')}
           </Typography.Text>
         );
       },

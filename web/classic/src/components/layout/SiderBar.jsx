@@ -39,7 +39,6 @@ const routerMap = {
   user: '/console/user',
   subscription: '/console/subscription',
   log: '/console/log',
-  midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
   detail: '/console',
@@ -92,15 +91,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/log',
       },
       {
-        text: t('绘图日志'),
-        itemKey: 'midjourney',
-        to: '/midjourney',
-        className:
-          localStorage.getItem('enable_drawing') === 'true'
-            ? ''
-            : 'tableHiddle',
-      },
-      {
         text: t('任务日志'),
         itemKey: 'task',
         to: '/task',
@@ -118,7 +108,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     return filteredItems;
   }, [
     localStorage.getItem('enable_data_export'),
-    localStorage.getItem('enable_drawing'),
     localStorage.getItem('enable_task'),
     t,
     isModuleVisible,
