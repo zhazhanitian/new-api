@@ -1,23 +1,22 @@
-生成 Git 提交信息时，标题和正文只能使用简体中文。此条覆盖默认的英文提交说明。
+When generating a Git commit message, write the subject and body in Simplified Chinese only. Never write English sentences. Keep identifiers such as PayCenter, API, watermark inside the Chinese sentence.
 
-格式：
+Format:
 
-<type>(<scope>): <中文标题>
+<type>(<scope>): <简体中文标题>
 
-<中文正文>
+<简体中文正文>
 
-- type 只能是 feat、fix、docs、style、refactor、perf、test、build、ci、chore、revert
-- scope 可选，英文小写名词
-- 标题用简体中文，祈使语气，不加句号，不超过 50 个字
-- 正文可选，空一行，简体中文，说明为什么改
-- 字段名、函数名、接口名可以留在中文句子里，不要写英文整句
+- type: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+- scope: optional lowercase English noun
+- subject: Simplified Chinese, imperative, no period, at most 50 characters
+- body: optional, one blank line, Simplified Chinese, explain why
 
-正确：
+Example:
 
-fix(image): 补传豆包生图的水印开关
+feat(payment): 接入 PayCenter 充值
 
-异步生图转换时丢掉顶层 watermark，火山按默认值加水印。
+补上支付下单、查单和回调，方便对账。
 
-禁止：
+Forbidden:
 
-feat: Add watermark support to image generation requests
+feat: Integrate PayCenter top-up functionality
