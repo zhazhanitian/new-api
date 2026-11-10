@@ -91,8 +91,8 @@ func TestQuotaMatchesAPIMartSample(t *testing.T) {
 	require.Equal(t, 1508, info.TokenUsage.ImageInputTokens)
 	require.Equal(t, 1449, info.TokenUsage.ImageOutputTokens)
 
-	// 系数是平台 $/1M tokens。40 Credits÷10=$4，64÷10=$6.4，240÷10=$24。
-	expr := `tier("actual", p * 4 + cr * 1 + img * 6.4 + cc * 1.6 + img_o * 24)`
+	// 平台 $/1M = Credits÷10×7÷7.3。40、64、240 Credits 对应 $4、$6.4、$24，再换成 7.3 口径。
+	expr := `tier("actual", (p * 4 + cr * 1 + img * 6.4 + cc * 1.6 + img_o * 24) * 7 / 7.3)`
 	tokenTask := &model.Task{}
 	tokenTask.PrivateData.BillingContext = &model.TaskBillingContext{
 		OriginModelName: "gpt-image-2.6-flare",
@@ -100,9 +100,9 @@ func TestQuotaMatchesAPIMartSample(t *testing.T) {
 		QuotaPerUnit:    500000,
 		BillingExpr:     expr,
 	}
-	require.Equal(t, 22762, (&TaskAdaptor{}).AdjustBillingOnComplete(tokenTask, info))
+	require.Equal(t, 21826, (&TaskAdaptor{}).AdjustBillingOnComplete(tokenTask, info))
 	tokenTask.PrivateData.BillingContext.GroupRatio = 0.5
-	require.Equal(t, 11381, (&TaskAdaptor{}).AdjustBillingOnComplete(tokenTask, info))
+	require.Equal(t, 10913, (&TaskAdaptor{}).AdjustBillingOnComplete(tokenTask, info))
 	tokenTask.PrivateData.BillingContext.BillingExpr = ""
 	require.Equal(t, 0, (&TaskAdaptor{}).AdjustBillingOnComplete(tokenTask, info))
 
