@@ -31,6 +31,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/siliconflow"
 	"github.com/QuantumNous/new-api/relay/channel/submodel"
 	taskali "github.com/QuantumNous/new-api/relay/channel/task/ali"
+	apimartFlowMusic "github.com/QuantumNous/new-api/relay/channel/task/apimart_flowmusic"
 	apimartImage "github.com/QuantumNous/new-api/relay/channel/task/apimart_image"
 	apimartSuno "github.com/QuantumNous/new-api/relay/channel/task/apimart_suno"
 	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
@@ -159,6 +160,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &apimartSuno.TaskAdaptor{}
 		case constant.ChannelTypeAPIMartImage:
 			return &apimartImage.TaskAdaptor{}
+		case constant.ChannelTypeAPIMartFlowMusic:
+			return &apimartFlowMusic.TaskAdaptor{}
 		case constant.ChannelTypeAli:
 			return &taskali.TaskAdaptor{}
 		case constant.ChannelTypeKling:

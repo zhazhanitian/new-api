@@ -423,6 +423,8 @@ export function getChannelIcon(channelType) {
       return <Doubao.Color size={iconSize} />;
     case 62: // APIMart Image
       return <OpenAI size={iconSize} />;
+    case 63: // APIMart Flow Music
+      return <Suno size={iconSize} />;
     case 8: // 自定义渠道
     case 22: // 知识库：FastGPT
       return <FastGPT.Color size={iconSize} />;

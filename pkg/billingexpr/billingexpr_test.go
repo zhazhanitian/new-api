@@ -277,6 +277,76 @@ func TestPixels_WxH(t *testing.T) {
 	}
 }
 
+func TestShortEdge(t *testing.T) {
+	cost, _, err := billingexpr.RunExprWithRequest(
+		`shortEdge(param("size"))`,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Body: []byte(`{"size":"2000x1104"}`)},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(cost-1104) > 1e-6 {
+		t.Errorf("shortEdge = %f, want 1104", cost)
+	}
+}
+
+func TestImageTierExpressions(t *testing.T) {
+	mai := `
+let w = param("extra_fields.width");
+let h = param("extra_fields.height");
+let pair = (w != nil && h != nil && w > 0 && h > 0) ? w * h : 0;
+let px = pixels(param("size"));
+let area = pair > 0 ? pair : px;
+let res = param("resolution");
+let band = area > 1024 * 1024 ? "2K" : area > 0 ? "1K" : ((res == "2K" || res == "2k") ? "2K" : "1K");
+band == "2K" ? tier("2K", 67162) : tier("1K", 29851)
+`
+	hy := `
+let w = param("extra_fields.width");
+let h = param("extra_fields.height");
+let pairEdge = (w != nil && h != nil && w > 0 && h > 0) ? (w < h ? w : h) : 0;
+let edge = pairEdge > 0 ? pairEdge : shortEdge(param("size"));
+let res = param("resolution");
+let band = edge > 2048 ? "4K" : edge > 1024 ? "2K" : edge > 0 ? "1K" : ((res == "4K" || res == "4k") ? "4K" : ((res == "2K" || res == "2k") ? "2K" : "1K"));
+band == "4K" ? tier("4K", 24548) : tier("1K", 18411)
+`
+	qwen := `
+let n = param("n") != nil ? param("n") : 1;
+let imgCount = param("image") == nil ? 0 : (param("image.#") != nil && param("image.#") > 0 ? param("image.#") : 1);
+tier("image", 19725) * n + imgCount * 2196
+`
+	cases := []struct {
+		name string
+		expr string
+		body string
+		want float64
+	}{
+		{"mai default", mai, `{"resolution":"1K"}`, 29851},
+		{"mai ratio 2k", mai, `{"ratio":"16:9","resolution":"2k"}`, 67162},
+		{"mai pixels 1k", mai, `{"size":"1024x1024"}`, 29851},
+		{"mai pixels 2k", mai, `{"size":"1536x1536","resolution":"1K"}`, 67162},
+		{"mai width height", mai, `{"extra_fields":{"width":1600,"height":1600},"size":"1024x1024"}`, 67162},
+		{"hy default", hy, `{}`, 18411},
+		{"hy 4k", hy, `{"resolution":"4K"}`, 24548},
+		{"hy short edge 2k", hy, `{"size":"2000x1104"}`, 18411},
+		{"hy short edge 4k", hy, `{"extra_fields":{"width":3000,"height":2200}}`, 24548},
+		{"qwen one image", qwen, `{"n":2,"image":["a","b"]}`, 19725*2 + 2196*2},
+		{"qwen string image", qwen, `{"image":"a"}`, 19725 + 2196},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cost, _, err := billingexpr.RunExprWithRequest(tc.expr, billingexpr.TokenParams{}, billingexpr.RequestInput{Body: []byte(tc.body)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if math.Abs(cost-tc.want) > 1e-6 {
+				t.Errorf("cost = %f, want %f", cost, tc.want)
+			}
+		})
+	}
+}
+
 func TestPixels_NamedTiersAndSeparators(t *testing.T) {
 	cases := []struct {
 		size string

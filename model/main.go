@@ -300,6 +300,7 @@ func migrateDB() error {
 			return err
 		}
 	}
+	EnsureImageModelVendors()
 	return nil
 }
 
@@ -373,6 +374,7 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	EnsureImageModelVendors()
 	common.SysLog("database migrated")
 	return nil
 }

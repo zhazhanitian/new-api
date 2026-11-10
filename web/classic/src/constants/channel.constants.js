@@ -214,6 +214,11 @@ export const CHANNEL_OPTIONS = [
     color: 'purple',
     label: 'APIMart Image',
   },
+  {
+    value: 63,
+    color: 'purple',
+    label: 'APIMart Flow Music',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.

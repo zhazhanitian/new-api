@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 
@@ -28,6 +29,14 @@ var ModelList = []string{
 	"gpt-image-2.5-sunburst",
 	"gpt-image-2.6-flare",
 	"gpt-image-2.6-sunburst",
+	"flux-3-image",
+	"flux-3-image-klein",
+	"mai-image-2.6",
+	"mai-image-2.6-flash",
+	"qwen-image-3.0",
+	"qwen-image-3.0-pro",
+	"muse-image-ext",
+	"hy-image-v3.5-preview",
 }
 
 // TaskAdaptor 把四字段图片请求转成 APIMart 的异步生图任务。
@@ -179,9 +188,34 @@ type upstreamBody struct {
 	MaskURL           string   `json:"mask_url,omitempty"`
 	MarkupURL         string   `json:"markup_url,omitempty"`
 	Complexity        string   `json:"complexity,omitempty"`
+	AspectRatio       string   `json:"aspect_ratio,omitempty"`
+	SafetyTolerance   *int     `json:"safety_tolerance,omitempty"`
+	Grounding         *bool    `json:"grounding,omitempty"`
+	Seed              *int64   `json:"seed,omitempty"`
+	Steps             *int     `json:"steps,omitempty"`
+	Width             *int     `json:"width,omitempty"`
+	Height            *int     `json:"height,omitempty"`
+	WebGrounding      *bool    `json:"web_grounding,omitempty"`
+	AutoAspectRatio   *bool    `json:"auto_aspect_ratio,omitempty"`
+	NegativePrompt    string   `json:"negative_prompt,omitempty"`
+	PromptExtend      *bool    `json:"prompt_extend,omitempty"`
+	PromptExtendMode  string   `json:"prompt_extend_mode,omitempty"`
+	NsfwCheck         *bool    `json:"nsfw_check,omitempty"`
 }
 
 func buildUpstreamBody(modelName string, req relaycommon.TaskSubmitReq) upstreamBody {
+	switch {
+	case isFluxModel(modelName):
+		return buildFluxUpstreamBody(modelName, req)
+	case isMaiModel(modelName):
+		return buildMaiUpstreamBody(modelName, req)
+	case isQwenImage3(modelName):
+		return buildQwenImage3UpstreamBody(modelName, req)
+	case isMuseModel(modelName):
+		return buildMuseUpstreamBody(modelName, req)
+	case isHyImageModel(modelName):
+		return buildHyImageUpstreamBody(modelName, req)
+	}
 	body := upstreamBody{
 		Model:        modelName,
 		Prompt:       req.Prompt,
@@ -222,6 +256,208 @@ func buildUpstreamBody(modelName string, req relaycommon.TaskSubmitReq) upstream
 	body.MarkupURL = metaString(req.Metadata, "markup_url")
 	body.Complexity = metaString(req.Metadata, "complexity")
 	return body
+}
+
+func isFluxModel(modelName string) bool {
+	switch strings.TrimSpace(modelName) {
+	case "flux-3-image", "flux-3-image-klein":
+		return true
+	default:
+		return false
+	}
+}
+
+func isFluxKlein(modelName string) bool {
+	return strings.TrimSpace(modelName) == "flux-3-image-klein"
+}
+
+// buildFluxUpstreamBody 只发 FLUX 认识的字段。像素 size、quality 和 GPT 扩展字段会让上游返回 400。
+func buildFluxUpstreamBody(modelName string, req relaycommon.TaskSubmitReq) upstreamBody {
+	body := upstreamBody{
+		Model:  modelName,
+		Prompt: req.Prompt,
+		N:      req.N,
+	}
+	if req.Ratio != "" {
+		body.AspectRatio = req.Ratio
+	}
+	body.Resolution = fluxResolution(req.Resolution)
+	body.ImageURLs = limitImages(modelName, req.Images)
+	if isFluxKlein(modelName) {
+		if format := fluxOutputFormat(req.OutputFormat); format != "" {
+			body.OutputFormat = format
+		}
+		if seed, ok, err := metaInt(req.Metadata, "seed"); err == nil && ok {
+			body.Seed = &seed
+		}
+		if steps, ok, err := metaInt(req.Metadata, "steps"); err == nil && ok {
+			n := int(steps)
+			body.Steps = &n
+		}
+		return body
+	}
+	if tolerance, ok, err := metaInt(req.Metadata, "safety_tolerance"); err == nil && ok {
+		n := int(tolerance)
+		body.SafetyTolerance = &n
+	}
+	if grounding, ok, err := metaBool(req.Metadata, "grounding"); err == nil && ok {
+		body.Grounding = &grounding
+	}
+	return body
+}
+
+func fluxResolution(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.EqualFold(value, "1k") {
+		return "1k"
+	}
+	if strings.EqualFold(value, "768") || strings.EqualFold(value, "768sq") {
+		return "768sq"
+	}
+	return strings.ToLower(value)
+}
+
+func isMaiModel(modelName string) bool {
+	switch strings.TrimSpace(modelName) {
+	case "mai-image-2.6", "mai-image-2.6-flash":
+		return true
+	default:
+		return false
+	}
+}
+
+func isQwenImage3(modelName string) bool {
+	switch strings.TrimSpace(modelName) {
+	case "qwen-image-3.0", "qwen-image-3.0-pro":
+		return true
+	default:
+		return false
+	}
+}
+
+func isMuseModel(modelName string) bool {
+	return strings.TrimSpace(modelName) == "muse-image-ext"
+}
+
+func isHyImageModel(modelName string) bool {
+	return strings.TrimSpace(modelName) == "hy-image-v3.5-preview"
+}
+
+func limitImages(modelName string, images []string) []string {
+	images = append([]string(nil), images...)
+	if limit := relaycommon.ImageRefLimit(modelName); limit > 0 && len(images) > limit {
+		common.SysLog(fmt.Sprintf("APIMart %s: 参考图数量 %d 超出上限 %d，已截断", modelName, len(images), limit))
+		return images[:limit]
+	}
+	return images
+}
+
+func buildMaiUpstreamBody(modelName string, req relaycommon.TaskSubmitReq) upstreamBody {
+	body := upstreamBody{Model: modelName, Prompt: req.Prompt, N: req.N}
+	width, height, paired := pixelPair(req.Metadata)
+	if paired {
+		body.Width = &width
+		body.Height = &height
+	} else if req.Size != "" {
+		body.Size = req.Size
+	} else if req.Ratio != "" {
+		body.Size = req.Ratio
+	}
+	if !paired && req.Size == "" {
+		resolution := req.Resolution
+		if resolution == "" {
+			resolution = "1K"
+		}
+		body.Resolution = resolution
+	}
+	body.ImageURLs = limitImages(modelName, req.Images)
+	if grounding, ok, err := metaBool(req.Metadata, "web_grounding"); err == nil && ok {
+		body.WebGrounding = &grounding
+	}
+	if auto, ok, err := metaBool(req.Metadata, "auto_aspect_ratio"); err == nil && ok {
+		body.AutoAspectRatio = &auto
+	}
+	return body
+}
+
+func buildQwenImage3UpstreamBody(modelName string, req relaycommon.TaskSubmitReq) upstreamBody {
+	body := upstreamBody{Model: modelName, Prompt: req.Prompt, N: req.N}
+	if req.Size != "" {
+		body.Size = req.Size
+	} else if req.Ratio != "" {
+		body.Size = req.Ratio
+	}
+	if req.Size == "" {
+		resolution := req.Resolution
+		if resolution == "" {
+			resolution = "1K"
+		}
+		body.Resolution = resolution
+	}
+	body.ImageURLs = limitImages(modelName, req.Images)
+	body.NegativePrompt = metaString(req.Metadata, "negative_prompt")
+	if extend, ok, err := metaBool(req.Metadata, "prompt_extend"); err == nil && ok {
+		body.PromptExtend = &extend
+	}
+	if mode := metaString(req.Metadata, "prompt_extend_mode"); mode != "" {
+		body.PromptExtendMode = mode
+	}
+	if check, ok, err := metaBool(req.Metadata, "nsfw_check"); err == nil && ok {
+		body.NsfwCheck = &check
+	}
+	return body
+}
+
+func buildMuseUpstreamBody(modelName string, req relaycommon.TaskSubmitReq) upstreamBody {
+	body := upstreamBody{Model: modelName, Prompt: req.Prompt, N: req.N}
+	if req.Ratio != "" {
+		body.AspectRatio = req.Ratio
+	}
+	body.ImageURLs = limitImages(modelName, req.Images)
+	return body
+}
+
+func buildHyImageUpstreamBody(modelName string, req relaycommon.TaskSubmitReq) upstreamBody {
+	body := upstreamBody{Model: modelName, Prompt: req.Prompt, N: req.N}
+	width, height, paired := pixelPair(req.Metadata)
+	if paired {
+		body.Width = &width
+		body.Height = &height
+	} else if req.Size != "" {
+		body.Size = req.Size
+	} else if req.Ratio != "" {
+		body.Size = req.Ratio
+	}
+	if !paired && req.Size == "" {
+		resolution := req.Resolution
+		if resolution == "" {
+			resolution = "1K"
+		}
+		body.Resolution = resolution
+	}
+	body.ImageURLs = limitImages(modelName, req.Images)
+	body.NegativePrompt = metaString(req.Metadata, "negative_prompt")
+	if seed, ok, err := metaInt(req.Metadata, "seed"); err == nil && ok {
+		body.Seed = &seed
+	}
+	return body
+}
+
+func pixelPair(meta map[string]interface{}) (int, int, bool) {
+	width, widthOK, widthErr := metaInt(meta, "width")
+	height, heightOK, heightErr := metaInt(meta, "height")
+	if widthErr != nil || heightErr != nil || widthOK != heightOK || !widthOK {
+		return 0, 0, false
+	}
+	return int(width), int(height), true
+}
+
+func fluxOutputFormat(value string) string {
+	format := strings.ToLower(strings.TrimSpace(value))
+	if format == "jpg" {
+		return "jpeg"
+	}
+	return format
 }
 
 // tokenBilledModels 只标记哪些模型要在完成时用实际 token 重跑平台表达式。
@@ -352,7 +588,68 @@ func metaString(meta map[string]interface{}, key string) string {
 	return value
 }
 
+func metaPresent(meta map[string]interface{}, key string) (interface{}, bool) {
+	if meta == nil {
+		return nil, false
+	}
+	value, ok := meta[key]
+	if !ok || value == nil {
+		return nil, false
+	}
+	return value, true
+}
+
+func metaInt(meta map[string]interface{}, key string) (int64, bool, error) {
+	raw, ok := metaPresent(meta, key)
+	if !ok {
+		return 0, false, nil
+	}
+	switch n := raw.(type) {
+	case float64:
+		if n != math.Trunc(n) || n > 4294967295 || n < -4294967295 {
+			return 0, true, fmt.Errorf("%s must be an integer", key)
+		}
+		return int64(n), true, nil
+	case int:
+		return int64(n), true, nil
+	case int64:
+		return n, true, nil
+	case json.Number:
+		parsed, err := n.Int64()
+		if err != nil {
+			return 0, true, fmt.Errorf("%s must be an integer", key)
+		}
+		return parsed, true, nil
+	default:
+		return 0, true, fmt.Errorf("%s must be an integer", key)
+	}
+}
+
+func metaBool(meta map[string]interface{}, key string) (bool, bool, error) {
+	raw, ok := metaPresent(meta, key)
+	if !ok {
+		return false, false, nil
+	}
+	value, ok := raw.(bool)
+	if !ok {
+		return false, true, fmt.Errorf("%s must be a boolean", key)
+	}
+	return value, true, nil
+}
+
 func validateExtras(req relaycommon.TaskSubmitReq) error {
+	switch {
+	case isFluxModel(req.Model):
+		return validateFluxExtras(req)
+	case isMaiModel(req.Model):
+		return validateMaiExtras(req)
+	case isQwenImage3(req.Model):
+		return validateQwenImage3Extras(req)
+	case isMuseModel(req.Model):
+		return validateMuseExtras(req)
+	case isHyImageModel(req.Model):
+		return validateHyImageExtras(req)
+	}
 	is26 := strings.Contains(req.Model, "image-2.6")
 	format := strings.ToLower(req.OutputFormat)
 	if bg := metaString(req.Metadata, "background"); strings.EqualFold(bg, "transparent") && format != "png" && format != "webp" {
@@ -384,6 +681,156 @@ func validateExtras(req relaycommon.TaskSubmitReq) error {
 	}
 	if req.OutputCompression > 0 && format != "jpeg" && format != "webp" {
 		return fmt.Errorf("output_compression requires output_format jpeg or webp")
+	}
+	return nil
+}
+
+func validateFluxExtras(req relaycommon.TaskSubmitReq) error {
+	klein := isFluxKlein(req.Model)
+	if klein {
+		if _, ok := metaPresent(req.Metadata, "grounding"); ok {
+			return fmt.Errorf("grounding is only supported by flux-3-image")
+		}
+		if _, ok := metaPresent(req.Metadata, "safety_tolerance"); ok {
+			return fmt.Errorf("safety_tolerance is only supported by flux-3-image")
+		}
+		switch fluxOutputFormat(req.OutputFormat) {
+		case "", "jpeg", "png":
+		default:
+			return fmt.Errorf("output_format %q is not supported for %s", req.OutputFormat, req.Model)
+		}
+		if _, ok := metaPresent(req.Metadata, "seed"); ok {
+			seed, _, err := metaInt(req.Metadata, "seed")
+			if err != nil {
+				return err
+			}
+			if seed < 0 || seed > 4294967295 {
+				return fmt.Errorf("seed must be between 0 and 4294967295")
+			}
+		}
+		if _, ok := metaPresent(req.Metadata, "steps"); ok {
+			steps, _, err := metaInt(req.Metadata, "steps")
+			if err != nil {
+				return err
+			}
+			if steps < 1 || steps > 16 {
+				return fmt.Errorf("steps must be between 1 and 16")
+			}
+		}
+		return nil
+	}
+	if req.OutputFormat != "" {
+		return fmt.Errorf("output_format is not supported by flux-3-image")
+	}
+	if _, ok := metaPresent(req.Metadata, "seed"); ok {
+		return fmt.Errorf("seed is only supported by flux-3-image-klein")
+	}
+	if _, ok := metaPresent(req.Metadata, "steps"); ok {
+		return fmt.Errorf("steps is only supported by flux-3-image-klein")
+	}
+	if _, ok := metaPresent(req.Metadata, "grounding"); ok {
+		if _, _, err := metaBool(req.Metadata, "grounding"); err != nil {
+			return err
+		}
+	}
+	if _, ok := metaPresent(req.Metadata, "safety_tolerance"); ok {
+		tolerance, _, err := metaInt(req.Metadata, "safety_tolerance")
+		if err != nil {
+			return err
+		}
+		if tolerance < 0 || tolerance > 4 {
+			return fmt.Errorf("safety_tolerance must be between 0 and 4")
+		}
+	}
+	return nil
+}
+
+func validateMaiExtras(req relaycommon.TaskSubmitReq) error {
+	if _, ok := metaPresent(req.Metadata, "web_grounding"); ok {
+		if _, _, err := metaBool(req.Metadata, "web_grounding"); err != nil {
+			return err
+		}
+	}
+	if _, ok := metaPresent(req.Metadata, "auto_aspect_ratio"); ok {
+		if _, _, err := metaBool(req.Metadata, "auto_aspect_ratio"); err != nil {
+			return err
+		}
+	}
+	return validatePixelPair(req.Metadata, 768, 0, 2359296)
+}
+
+func validateQwenImage3Extras(req relaycommon.TaskSubmitReq) error {
+	extend, extendOK, err := metaBool(req.Metadata, "prompt_extend")
+	if err != nil {
+		return err
+	}
+	if _, ok := metaPresent(req.Metadata, "nsfw_check"); ok {
+		if _, _, err = metaBool(req.Metadata, "nsfw_check"); err != nil {
+			return err
+		}
+	}
+	mode := metaString(req.Metadata, "prompt_extend_mode")
+	if mode != "" && mode != "direct" && mode != "agent" {
+		return fmt.Errorf("prompt_extend_mode must be direct or agent")
+	}
+	if mode != "" && (!extendOK || !extend) {
+		return fmt.Errorf("prompt_extend_mode requires prompt_extend true")
+	}
+	if mode == "agent" && len(req.Images) > 0 {
+		return fmt.Errorf("prompt_extend_mode agent is only supported for text-to-image")
+	}
+	return nil
+}
+
+func validateMuseExtras(req relaycommon.TaskSubmitReq) error {
+	if req.OutputFormat != "" {
+		return fmt.Errorf("output_format is not supported by muse-image-ext")
+	}
+	if _, ok := metaPresent(req.Metadata, "seed"); ok {
+		return fmt.Errorf("seed is not supported by muse-image-ext")
+	}
+	if metaString(req.Metadata, "negative_prompt") != "" {
+		return fmt.Errorf("negative_prompt is not supported by muse-image-ext")
+	}
+	return nil
+}
+
+func validateHyImageExtras(req relaycommon.TaskSubmitReq) error {
+	if _, ok := metaPresent(req.Metadata, "seed"); ok {
+		seed, _, err := metaInt(req.Metadata, "seed")
+		if err != nil {
+			return err
+		}
+		if seed < 0 {
+			return fmt.Errorf("seed must be a non-negative integer")
+		}
+	}
+	return validatePixelPair(req.Metadata, 256, 8192, 8294400)
+}
+
+func validatePixelPair(meta map[string]interface{}, minEdge, maxEdge, maxPixels int) error {
+	width, widthOK, widthErr := metaInt(meta, "width")
+	if widthErr != nil {
+		return widthErr
+	}
+	height, heightOK, heightErr := metaInt(meta, "height")
+	if heightErr != nil {
+		return heightErr
+	}
+	if widthOK != heightOK {
+		return fmt.Errorf("width and height must be provided together")
+	}
+	if !widthOK {
+		return nil
+	}
+	if width < int64(minEdge) || height < int64(minEdge) {
+		return fmt.Errorf("width and height must be at least %d", minEdge)
+	}
+	if maxEdge > 0 && (width > int64(maxEdge) || height > int64(maxEdge)) {
+		return fmt.Errorf("width and height must be at most %d", maxEdge)
+	}
+	if maxPixels > 0 && (height > int64(maxPixels) || width > int64(maxPixels)/height) {
+		return fmt.Errorf("width times height must be at most %d", maxPixels)
 	}
 	return nil
 }
@@ -434,7 +881,7 @@ func parseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
 	}
 	info := &relaycommon.TaskInfo{TaskID: resp.Data.ID}
 	switch strings.ToLower(resp.Data.Status) {
-	case "submitted":
+	case "submitted", "pending":
 		info.Status = string(model.TaskStatusSubmitted)
 		info.Progress = "10%"
 	case "processing":

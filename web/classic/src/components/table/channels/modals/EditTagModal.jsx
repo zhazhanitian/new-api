@@ -153,6 +153,13 @@ const EditTagModal = (props) => {
             'suno-sample', 'suno-inspo', 'suno-stems', 'suno-stems-all',
           ];
           break;
+        case 63:
+          localModels = [
+            'flowmusic', 'flowmusic-lyrics', 'flowmusic-extend', 'flowmusic-replace',
+            'flowmusic-cover', 'flowmusic-stems', 'flowmusic-upload',
+            'flowmusic-download', 'flowmusic-video',
+          ];
+          break;
         case 53:
           localModels = [
             'NousResearch/Hermes-4-405B-FP8',

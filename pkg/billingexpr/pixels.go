@@ -43,3 +43,32 @@ func pixelsOf(v interface{}) float64 {
 	}
 	return w * h
 }
+
+// shortEdgeOf 返回宽x高里较短的一边。比例、档位和无法解析的值返回 0。
+func shortEdgeOf(v interface{}) float64 {
+	if v == nil {
+		return 0
+	}
+	s := strings.TrimSpace(fmt.Sprint(v))
+	if s == "" || strings.EqualFold(s, "auto") {
+		return 0
+	}
+	switch strings.ToUpper(s) {
+	case "1K", "2K", "4K":
+		return 0
+	}
+	normalized := strings.NewReplacer("×", "x", "*", "x", "X", "x", " ", "").Replace(s)
+	parts := strings.SplitN(normalized, "x", 2)
+	if len(parts) != 2 {
+		return 0
+	}
+	w, errW := strconv.ParseFloat(parts[0], 64)
+	h, errH := strconv.ParseFloat(parts[1], 64)
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return 0
+	}
+	if w < h {
+		return w
+	}
+	return h
+}

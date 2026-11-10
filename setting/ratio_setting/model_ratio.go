@@ -315,6 +315,17 @@ var defaultModelPrice = map[string]float64{
 	"suno-upload-cover":       0.05,    // 0.5 Credits
 	"suno-upload-extend":      0.05,    // 0.5 Credits
 	"suno-create-model":       0.96,    // 9.6 Credits
+	// APIMart Flow Music (ChannelType=63). Gold tier.
+	// ModelPrice = Credits × $0.10 × 7 / 7.3, so platform CNY matches APIMart's 1 USD = 7 CNY.
+	"flowmusic":               0.057534, // 0.6 Credits → ¥0.42
+	"flowmusic-extend":        0.057534, // 0.6 Credits → ¥0.42
+	"flowmusic-replace":       0.057534, // 0.6 Credits → ¥0.42
+	"flowmusic-cover":         0.057534, // 0.6 Credits → ¥0.42
+	"flowmusic-stems":         0.057534, // 0.6 Credits → ¥0.42
+	"flowmusic-lyrics":        0.019178, // 0.2 Credits → ¥0.14
+	"flowmusic-download":      0.019178, // 0.2 Credits → ¥0.14
+	"flowmusic-video":         0.019178, // 0.2 Credits → ¥0.14
+	"flowmusic-upload":        0.009589, // 0.1 Credits → ¥0.07
 	"dall-e-3":                       0.04,
 	"imagen-3.0-generate-002":        0.03,
 	"black-forest-labs/flux-1.1-pro": 0.04,

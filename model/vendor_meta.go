@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
@@ -60,6 +62,84 @@ func GetVendorByID(id int) (*Vendor, error) {
 		return nil, err
 	}
 	return &v, nil
+}
+
+// imageVendorCompany 把先前按产品名写入的供应商改成公司名。
+// names 的第一项是要新建的公司名，后面是已经存在时优先沿用的别名。
+type imageVendorCompany struct {
+	product string
+	names   []string
+	desc    string
+	icon    string
+}
+
+// EnsureImageModelVendors 补上图像模型还没有的公司供应商，并改掉按产品名插入的记录。
+// 公司名已经存在时不新建，只把产品名那条并过去。
+func EnsureImageModelVendors() {
+	companies := []imageVendorCompany{
+		{product: "FLUX", names: []string{"Black Forest Labs"}, desc: "Black Forest Labs 图像模型", icon: "Flux"},
+		{product: "MAI", names: []string{"Microsoft", "微软"}, desc: "Microsoft 图像模型", icon: "Microsoft.Color"},
+		{product: "Muse", names: []string{"Meta"}, desc: "Meta 图像模型", icon: "Meta.Color"},
+		{product: "Qwen", names: []string{"阿里巴巴"}, desc: "阿里巴巴图像模型", icon: "Qwen.Color"},
+		{product: "Hunyuan", names: []string{"腾讯"}, desc: "腾讯图像模型", icon: "Hunyuan.Color"},
+	}
+	for _, company := range companies {
+		if err := ensureImageVendorCompany(company); err != nil {
+			common.SysLog("ensure image vendor " + company.names[0] + ": " + err.Error())
+		}
+	}
+}
+
+func ensureImageVendorCompany(company imageVendorCompany) error {
+	product, err := getVendorByName(company.product)
+	if err != nil {
+		return err
+	}
+	var existing *Vendor
+	for _, name := range company.names {
+		existing, err = getVendorByName(name)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			break
+		}
+	}
+	if product != nil && existing != nil {
+		if err = DB.Model(&Model{}).Where("vendor_id = ?", product.Id).Update("vendor_id", existing.Id).Error; err != nil {
+			return err
+		}
+		return product.Delete()
+	}
+	if product != nil {
+		product.Name = company.names[0]
+		product.Description = company.desc
+		product.Icon = company.icon
+		product.Status = 1
+		return product.Update()
+	}
+	if existing != nil {
+		return nil
+	}
+	created := Vendor{
+		Name:        company.names[0],
+		Description: company.desc,
+		Icon:        company.icon,
+		Status:      1,
+	}
+	return created.Insert()
+}
+
+func getVendorByName(name string) (*Vendor, error) {
+	var vendor Vendor
+	err := DB.Where("name = ?", name).First(&vendor).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &vendor, nil
 }
 
 // GetAllVendors 获取全部供应商（分页）

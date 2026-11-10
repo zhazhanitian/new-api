@@ -106,6 +106,7 @@ export function getChannelTypeIcon(type: number): string {
     59: 'Qwen',   // JoyAgent (Alibaba-backed)
     60: 'OpenAI', // APIMart Suno (use generic icon)
     62: 'OpenAI', // APIMart Image
+    63: 'Suno', // APIMart Flow Music
 
     // Tools & Platforms
     37: 'Dify', // Dify

@@ -48,15 +48,30 @@ type imageSpec struct {
 	maxRef                 int
 	outputFormats          []string
 	defaultQuality         string
+	// resolutionAliases、formatAliases 把调用方写法收成规格表里的标准值，键不区分大小写。
+	resolutionAliases map[string]string
+	formatAliases     map[string]string
 }
 
 var (
-	qualityFive = []string{"low", "medium", "high", "xhigh", "max"}
-	ggRatios    = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"}
-	gg31Ratios  = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"}
-	klingRatios = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"}
-	omniRatios  = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9", "auto"}
-	apiRatios   = []string{"1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21", "3:1", "1:3"}
+	qualityFive      = []string{"low", "medium", "high", "xhigh", "max"}
+	ggRatios         = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"}
+	gg31Ratios       = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"}
+	klingRatios      = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"}
+	omniRatios       = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9", "auto"}
+	apiRatios        = []string{"1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21", "3:1", "1:3"}
+	fluxRatios       = []string{"21:9", "2:1", "16:9", "3:2", "7:5", "4:3", "5:4", "1:1", "4:5", "3:4", "5:7", "2:3", "9:16", "1:2", "9:21", "auto"}
+	maiRatios        = []string{"1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21", "4:1", "1:4", "auto"}
+	qwenImage3Ratios = []string{"1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"}
+	museRatios       = []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}
+	hyImageRatios    = []string{"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "auto"}
+)
+
+var (
+	fluxResolutions       = []string{"768sq", "1k", "1.5k", "2k", "4k"}
+	maiResolutions        = []string{"1K", "2K"}
+	qwenImage3Resolutions = []string{"1K", "2K"}
+	hyImageResolutions    = []string{"1K", "2K", "4K"}
 )
 
 func imageSpecs() []imageSpec {
@@ -193,6 +208,73 @@ func imageSpecs() []imageSpec {
 			outputFormats:          []string{"png", "jpeg", "webp"},
 			defaultQuality:         "low",
 		},
+		{
+			names:             []string{"flux-3-image"},
+			allowResolution:   true,
+			allowRatio:        true,
+			resolutions:       fluxResolutions,
+			ratios:            fluxRatios,
+			resolutionAliases: map[string]string{"768": "768sq"},
+			maxN:              1,
+			maxRef:            10,
+		},
+		{
+			names:             []string{"flux-3-image-klein"},
+			allowResolution:   true,
+			allowRatio:        true,
+			resolutions:       fluxResolutions,
+			ratios:            fluxRatios,
+			resolutionAliases: map[string]string{"768": "768sq"},
+			formatAliases:     map[string]string{"jpg": "jpeg"},
+			maxN:              1,
+			maxRef:            10,
+			outputFormats:     []string{"jpeg", "png"},
+		},
+		{
+			names:             []string{"mai-image-2.6", "mai-image-2.6-flash"},
+			allowSize:         true,
+			allowResolution:   true,
+			allowRatio:        true,
+			resolutions:       maiResolutions,
+			ratios:            maiRatios,
+			sizeExcludesRatio: true,
+			pixels:            pixelRule{minEdge: 768, maxPixels: 2359296, maxAspect: 4, enforce: true},
+			maxN:              1,
+			maxRef:            5,
+		},
+		{
+			names:                  []string{"qwen-image-3.0", "qwen-image-3.0-pro"},
+			allowSize:              true,
+			allowResolution:        true,
+			allowRatio:             true,
+			resolutions:            qwenImage3Resolutions,
+			ratios:                 qwenImage3Ratios,
+			sizeExcludesResolution: true,
+			sizeExcludesRatio:      true,
+			pixels:                 pixelRule{minEdge: 512, maxEdge: 2048, maxAspect: 8, enforce: true},
+			maxN:                   6,
+			maxRef:                 3,
+		},
+		{
+			names:      []string{"muse-image-ext"},
+			allowRatio: true,
+			ratios:     museRatios,
+			maxN:       1,
+			maxRef:     9,
+		},
+		{
+			names:                  []string{"hy-image-v3.5-preview"},
+			allowSize:              true,
+			allowResolution:        true,
+			allowRatio:             true,
+			resolutions:            hyImageResolutions,
+			ratios:                 hyImageRatios,
+			sizeExcludesResolution: true,
+			sizeExcludesRatio:      true,
+			pixels:                 pixelRule{minEdge: 256, maxEdge: 8192, maxPixels: 8294400, enforce: true},
+			maxN:                   1,
+			maxRef:                 5,
+		},
 	}
 }
 
@@ -217,10 +299,10 @@ func NormalizeImageFields(model string, in ImageFields, strict bool) (ImageField
 
 	out := in
 	out.Size = strings.TrimSpace(in.Size)
-	out.Resolution = strings.TrimSpace(in.Resolution)
+	out.Resolution = applyAlias(spec.resolutionAliases, strings.TrimSpace(in.Resolution))
 	out.Ratio = strings.TrimSpace(in.Ratio)
 	out.Quality = strings.TrimSpace(in.Quality)
-	out.OutputFormat = strings.TrimSpace(in.OutputFormat)
+	out.OutputFormat = applyAlias(spec.formatAliases, strings.TrimSpace(in.OutputFormat))
 
 	if out.Size != "" {
 		if !spec.allowSize {
@@ -246,7 +328,9 @@ func NormalizeImageFields(model string, in ImageFields, strict bool) (ImageField
 		if !spec.allowRatio {
 			return in, fmt.Errorf("model %s does not accept ratio", model)
 		}
-		if !ratioAllowed(out.Ratio, spec.ratios) {
+		if canon, ok := canonical(out.Ratio, spec.ratios); ok {
+			out.Ratio = canon
+		} else if !ratioAllowed(out.Ratio, spec.ratios) {
 			return in, fmt.Errorf("ratio %q is not supported for %s", out.Ratio, model)
 		}
 	}
@@ -404,6 +488,18 @@ func lookupImageSpec(model string) (imageSpec, bool) {
 		return prefixHit, true
 	}
 	return imageSpec{}, false
+}
+
+func applyAlias(aliases map[string]string, value string) string {
+	if value == "" || len(aliases) == 0 {
+		return value
+	}
+	for key, alias := range aliases {
+		if strings.EqualFold(value, key) {
+			return alias
+		}
+	}
+	return value
 }
 
 func canonical(value string, allowed []string) (string, bool) {

@@ -679,6 +679,13 @@ const EditChannelModal = (props) => {
             'suno-sample', 'suno-inspo', 'suno-stems', 'suno-stems-all',
           ];
           break;
+        case 63:
+          localModels = [
+            'flowmusic', 'flowmusic-lyrics', 'flowmusic-extend', 'flowmusic-replace',
+            'flowmusic-cover', 'flowmusic-stems', 'flowmusic-upload',
+            'flowmusic-download', 'flowmusic-video',
+          ];
+          break;
         case 45:
           localModels = getChannelModels(value);
           setInputs((prevInputs) => ({

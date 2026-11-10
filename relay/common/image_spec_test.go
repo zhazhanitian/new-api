@@ -219,6 +219,102 @@ func TestNormalizeImageFields(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:  "flux resolution alias",
+			model: "flux-3-image",
+			in:    ImageFields{Resolution: "768", Ratio: "AUTO"},
+			want:  ImageFields{Resolution: "768sq", Ratio: "auto"},
+		},
+		{
+			name:  "flux 1.5k",
+			model: "flux-3-image-klein",
+			in:    ImageFields{Resolution: "1.5K", Ratio: "7:5", OutputFormat: "JPG"},
+			want:  ImageFields{Resolution: "1.5k", Ratio: "7:5", OutputFormat: "jpeg"},
+		},
+		{
+			name:    "flux rejects size",
+			model:   "flux-3-image",
+			in:      ImageFields{Size: "1024x1024"},
+			wantErr: true,
+		},
+		{
+			name:    "flux rejects quality",
+			model:   "flux-3-image-klein",
+			in:      ImageFields{Quality: "high"},
+			wantErr: true,
+		},
+		{
+			name:    "flux n too large",
+			model:   "flux-3-image",
+			in:      ImageFields{N: 2},
+			wantErr: true,
+		},
+		{
+			name:    "flux klein rejects webp",
+			model:   "flux-3-image-klein",
+			in:      ImageFields{OutputFormat: "webp"},
+			wantErr: true,
+		},
+		{
+			name:    "flux rejects unknown ratio",
+			model:   "flux-3-image",
+			in:      ImageFields{Ratio: "3:1"},
+			wantErr: true,
+		},
+		{
+			name:  "mai ratio and resolution",
+			model: "mai-image-2.6",
+			in:    ImageFields{Resolution: "2k", Ratio: "16:9"},
+			want:  ImageFields{Resolution: "2K", Ratio: "16:9"},
+		},
+		{
+			name:    "mai rejects 4k",
+			model:   "mai-image-2.6-flash",
+			in:      ImageFields{Resolution: "4K"},
+			wantErr: true,
+		},
+		{
+			name:    "mai pixel too small",
+			model:   "mai-image-2.6",
+			in:      ImageFields{Size: "512x512"},
+			wantErr: true,
+		},
+		{
+			name:  "qwen image 3 size",
+			model: "qwen-image-3.0-pro",
+			in:    ImageFields{Size: "1600x900", N: 6},
+			want:  ImageFields{Size: "1600x900", N: 6},
+		},
+		{
+			name:    "qwen image 3 n too large",
+			model:   "qwen-image-3.0",
+			in:      ImageFields{N: 7},
+			wantErr: true,
+		},
+		{
+			name:    "muse rejects resolution",
+			model:   "muse-image-ext",
+			in:      ImageFields{Resolution: "1K"},
+			wantErr: true,
+		},
+		{
+			name:  "muse ratio",
+			model: "muse-image-ext",
+			in:    ImageFields{Ratio: "3:2"},
+			want:  ImageFields{Ratio: "3:2"},
+		},
+		{
+			name:  "hy resolution",
+			model: "hy-image-v3.5-preview",
+			in:    ImageFields{Resolution: "4k", Ratio: "auto"},
+			want:  ImageFields{Resolution: "4K", Ratio: "auto"},
+		},
+		{
+			name:    "hy rejects n",
+			model:   "hy-image-v3.5-preview",
+			in:      ImageFields{N: 2},
+			wantErr: true,
+		},
+		{
 			name:   "v1 unknown model skipped",
 			model:  "dall-e-3",
 			in:     ImageFields{Size: "1024x1024", Quality: "standard"},
@@ -261,5 +357,11 @@ func TestImageUpstreamDefaultQuality(t *testing.T) {
 	}
 	if got := ImageRefLimit("gpt-image-2.6-flare"); got != 16 {
 		t.Fatalf("ref limit = %d", got)
+	}
+	if got := ImageUpstreamDefaultQuality("flux-3-image"); got != "" {
+		t.Fatalf("flux default quality = %q", got)
+	}
+	if got := ImageRefLimit("flux-3-image-klein"); got != 10 {
+		t.Fatalf("flux ref limit = %d", got)
 	}
 }
