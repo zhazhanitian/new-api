@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -9,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/samber/lo"
@@ -172,6 +174,22 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 				watermark := formData.Get("watermark") == "true"
 				imageRequest.Watermark = &watermark
 			}
+			if resolution := formData.Get("resolution"); resolution != "" {
+				if encoded, mErr := common.Marshal(resolution); mErr == nil {
+					if imageRequest.Extra == nil {
+						imageRequest.Extra = map[string]json.RawMessage{}
+					}
+					imageRequest.Extra["resolution"] = encoded
+				}
+			}
+			if ratio := formData.Get("ratio"); ratio != "" {
+				if encoded, mErr := common.Marshal(ratio); mErr == nil {
+					if imageRequest.Extra == nil {
+						imageRequest.Extra = map[string]json.RawMessage{}
+					}
+					imageRequest.Extra["ratio"] = encoded
+				}
+			}
 			break
 		}
 		fallthrough
@@ -221,6 +239,11 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		if imageRequest.N == nil || *imageRequest.N == 0 {
 			imageRequest.N = common.GetPointer(uint(1))
 		}
+	}
+
+	// 已登记的图片模型按四字段校验。没登记的模型（dall-e、gpt-image-1 等）跳过。
+	if err := relaycommon.ApplyImageFieldRules(imageRequest, false); err != nil {
+		return nil, err
 	}
 
 	return imageRequest, nil

@@ -129,6 +129,7 @@ type TaskBillingContext struct {
 	ActualCredits           float64 `json:"actual_credits,omitempty"`            // 专业版查询返回的实际积分
 	AllowCompleteAdjustment bool    `json:"allow_complete_adjustment,omitempty"` // 允许按次计费任务在完成时进行积分校准（仅腾讯专业版）
 	QuotaPerUnit            float64 `json:"quota_per_unit,omitempty"`            // 提交时额度换算基准快照
+	BillingExpr             string  `json:"billing_expr,omitempty"`              // 提交时的阶梯表达式，完成时用实际 token 再算一次
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）

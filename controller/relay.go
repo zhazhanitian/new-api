@@ -599,6 +599,8 @@ func RelayTask(c *gin.Context) {
 			PerCallBilling:    common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
 			RequestedN:        taskRequestedN(c, relayInfo),
 			BilledDurationSec: relayInfo.BilledDurationSec,
+			QuotaPerUnit:      taskQuotaPerUnit(relayInfo),
+			BillingExpr:       taskBillingExpr(relayInfo),
 		}
 		bgTask.Quota = result.Quota
 		bgTask.Action = relayInfo.Action
@@ -647,7 +649,8 @@ func RelayTask(c *gin.Context) {
 			BilledDurationSec:       relayInfo.BilledDurationSec,
 			AllowCompleteAdjustment: relayInfo.AllowCompleteAdjustment,
 			EstimatedCredits:        relayInfo.EstimatedCredits,
-			QuotaPerUnit:            relayInfo.QuotaPerUnit,
+			QuotaPerUnit:            taskQuotaPerUnit(relayInfo),
+			BillingExpr:             taskBillingExpr(relayInfo),
 		}
 		task.PrivateData.ReqFileFormat = relayInfo.ReqFileFormat
 		task.Quota = result.Quota
@@ -734,6 +737,26 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 // taskRequestedN 从任务提交请求中提取 n（生成图片数），默认 1。
 // 保存到 BillingContext.RequestedN 供轮询阶段比例退款使用。
 // 优先读 BackgroundTaskReq（后台任务），回退到 gin context 的 task_request（轮询任务）。
+func taskBillingExpr(info *relaycommon.RelayInfo) string {
+	if info != nil && info.TieredBillingSnapshot != nil {
+		return info.TieredBillingSnapshot.ExprString
+	}
+	return ""
+}
+
+func taskQuotaPerUnit(info *relaycommon.RelayInfo) float64 {
+	if info == nil {
+		return 0
+	}
+	if info.QuotaPerUnit > 0 {
+		return info.QuotaPerUnit
+	}
+	if info.TieredBillingSnapshot != nil {
+		return info.TieredBillingSnapshot.QuotaPerUnit
+	}
+	return 0
+}
+
 func taskRequestedN(c *gin.Context, info *relaycommon.RelayInfo) int {
 	if req := info.BackgroundTaskReq; req != nil && req.N > 0 {
 		return req.N

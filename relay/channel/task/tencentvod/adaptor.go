@@ -61,173 +61,18 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		return nil, errors.New("tencentvod: prompt is required")
 	}
 
-	quality := request.Quality
-	size := request.Size
-
-	lookupModel := resolveModelName(info)
-	tencentModelName := modelToTencentName(lookupModel)
-
-	// 各模型的 ModelVersion 来源不同，不能统一通过 quality 推断：
-	// - OG: quality 映射到精度档位（image2_low/medium/high），由 qualityToModelVersion 处理
-	// - GG/Kling/Vidu/Qwen/Hunyuan: 版本固定由原始模型名决定，quality 另独立映射到 Resolution
-	var modelVersion string
-	if tencentModelName == "GG" {
-		modelVersion = getGGVersion(lookupModel)
-	} else if tencentModelName == "Kling" {
-		modelVersion = getKlingVersion(lookupModel)
-	} else if tencentModelName == "Vidu" {
-		modelVersion = getViduVersion(lookupModel)
-	} else if tencentModelName == "Qwen" {
-		modelVersion = getQwenVersion(lookupModel)
-	} else if tencentModelName == "Hunyuan" {
-		modelVersion = getHunyuanVersion(lookupModel)
-	} else {
-		modelVersion = qualityToModelVersion(tencentModelName, quality)
-	}
-
-	body := createTaskRequest{
-		SubAppId:     a.subAppId,
-		ModelName:    tencentModelName,
-		ModelVersion: modelVersion,
-		Prompt:       request.Prompt,
-	}
-
-	// ── 尺寸/分辨率处理（各模型路径不同）────────────────────────────────────
-	// OG:      ExtInfo.AdditionalParameters.size 传自定义像素尺寸（[655,360–8,294,400] 像素）
-	// GG:      OutputConfig.Resolution（大写 1K/2K/4K）+ AspectRatio
-	// Kling:   OutputConfig.Resolution（小写 1k/2k/4k）+ AspectRatio
-	//          scene 版本：跳过 OutputConfig，仅设 SceneType 和扩图 ExtInfo
-	// Vidu:    OutputConfig.Resolution（1080p/2K/4K）+ AspectRatio
-	// Qwen:    ExtInfo.AdditionalParameters.size 传自定义像素尺寸（[512×512–2048×2048] 像素）
-	// Hunyuan: ExtInfo.AdditionalParameters.size 传自定义像素尺寸（各维度 [512,2048]，乘积≤1M）
-	// 其他:    OutputConfig.AspectRatio（fallback）
-	if tencentModelName == "OG" {
-		if extInfo := buildOGExtInfo(size); extInfo != "" {
-			body.ExtInfo = extInfo
-		}
-	} else if tencentModelName == "GG" {
-		aspectRatio, arErr := getGGAspectRatio(modelVersion, size)
-		if arErr != nil {
-			// 非致命错误：记录日志，使用回退值继续
-			common.SysLog(fmt.Sprintf("TencentVOD GG ConvertImageRequest: aspect ratio fallback: %v", arErr))
-		}
-		resolution, resErr := getGGResolution(modelVersion, quality)
-		if resErr != nil {
-			// 非致命错误：记录日志，使用回退值继续
-			common.SysLog(fmt.Sprintf("TencentVOD GG ConvertImageRequest: resolution fallback: %v", resErr))
-		}
-		body.OutputConfig = &outputConfig{AspectRatio: aspectRatio, Resolution: resolution}
-	} else if tencentModelName == "Kling" {
-		aspectRatio, arErr := getKlingAspectRatio(modelVersion, size)
-		if arErr != nil {
-			common.SysLog(fmt.Sprintf("TencentVOD Kling ConvertImageRequest: aspect ratio fallback: %v", arErr))
-		}
-		resolution, resErr := getKlingResolution(modelVersion, quality)
-		if resErr != nil {
-			common.SysLog(fmt.Sprintf("TencentVOD Kling ConvertImageRequest: resolution fallback: %v", resErr))
-		}
-		// scene 版本：getKlingAspectRatio/getKlingResolution 均返回 ""，跳过 OutputConfig
-		if aspectRatio != "" || resolution != "" {
-			body.OutputConfig = &outputConfig{AspectRatio: aspectRatio, Resolution: resolution}
-		}
-	} else if tencentModelName == "Vidu" {
-		aspectRatio, arErr := getViduAspectRatio(size)
-		if arErr != nil {
-			common.SysLog(fmt.Sprintf("TencentVOD Vidu ConvertImageRequest: aspect ratio fallback: %v", arErr))
-		}
-		resolution, resErr := getViduResolution(quality)
-		if resErr != nil {
-			common.SysLog(fmt.Sprintf("TencentVOD Vidu ConvertImageRequest: resolution fallback: %v", resErr))
-		}
-		body.OutputConfig = &outputConfig{AspectRatio: aspectRatio, Resolution: resolution}
-	} else if tencentModelName == "Qwen" {
-		// Qwen 不支持 OutputConfig，使用 ExtInfo 传自定义像素尺寸
-		// 特殊说明：Qwen 0925 合法总像素范围 [512×512=261,632, 2048×2048=4,194,304]
-		if extInfo := buildOGExtInfo(size); extInfo != "" {
-			body.ExtInfo = extInfo
-		}
-	} else if tencentModelName == "Hunyuan" {
-		// Hunyuan 不支持 OutputConfig，使用 ExtInfo 传自定义像素尺寸
-		// 特殊说明：Hunyuan 3.0 宽高均在 [512, 2048] 像素范围内，宽高乘积 ≤ 1024×1024
-		if extInfo := buildOGExtInfo(size); extInfo != "" {
-			body.ExtInfo = extInfo
-		}
-	} else {
-		body.OutputConfig = &outputConfig{AspectRatio: sizeToAspectRatio(size)}
-	}
-
-	// OutputImageCount：将请求的 n 映射到 OutputConfig.OutputImageCount。
-	// 仅 OG（上限 8）和 Kling（上限 9）支持；其他模型忽略 n 字段。
-	// n <= 1 时不设此字段，使用 API 默认值（1 张）。
-	if request.N != nil && int(*request.N) > 1 {
-		maxCount := 0
-		switch tencentModelName {
-		case "OG":
-			maxCount = 8
-		case "Kling":
-			maxCount = 9
-		}
-		if maxCount > 0 {
-			count := int(*request.N)
-			if count > maxCount {
-				common.SysLog(fmt.Sprintf(
-					"TencentVOD %s: OutputImageCount %d 超出上限 %d，已截断至 %d 张",
-					tencentModelName, count, maxCount, maxCount,
-				))
-				count = maxCount
-			}
-			if body.OutputConfig == nil {
-				body.OutputConfig = &outputConfig{}
-			}
-			body.OutputConfig.OutputImageCount = count
-		}
-	}
-
-	// OutputFormat：将请求的 output_format 映射到 OutputConfig.OutputFormat。
-	// 可选值：jpeg / png；不传时跟随模型默认值。
-	if len(request.OutputFormat) > 0 {
-		var ofStr string
-		if err := common.Unmarshal(request.OutputFormat, &ofStr); err == nil && ofStr != "" {
-			if body.OutputConfig == nil {
-				body.OutputConfig = &outputConfig{}
-			}
-			body.OutputConfig.OutputFormat = ofStr
-		}
-	}
-
-	// extended params from extra_fields (json.RawMessage)
+	var extra map[string]interface{}
 	if len(request.ExtraFields) > 0 {
-		var extraMap map[string]interface{}
-		if err := common.Unmarshal(request.ExtraFields, &extraMap); err == nil {
-			if v, ok := extraMap["negative_prompt"].(string); ok {
-				body.NegativePrompt = v
-			}
-			if v, ok := extraMap["seed"].(float64); ok {
-				body.Seed = int64(v)
-			}
-			// EnhancePrompt 自动优化提示词，仅 GG 系列支持，取值 "Enabled" / "Disabled"
-			if v, ok := extraMap["enhance_prompt"].(string); ok && tencentModelName == "GG" {
-				body.EnhancePrompt = v
-			}
-			// SceneType：Kling scene 和 Hunyuan 3.0 支持，通过 extra_fields.scene_type 传入
-			// Kling 取值 "image_expand"；Hunyuan 3.0 取值 "3d_panorama"
-			if v, ok := extraMap["scene_type"].(string); ok &&
-				(tencentModelName == "Kling" || tencentModelName == "Hunyuan") {
-				body.SceneType = v
-			}
-			// Kling 扩图参数：仅 SceneType="image_expand" 时有效，通过 extra_fields.expansion 传入
-			// 格式：{"up": 0.1, "down": 0.2, "left": 0.3, "right": 0.4}，各值范围 [0, 2]
-			if tencentModelName == "Kling" {
-				if expansion, ok := extraMap["expansion"].(map[string]interface{}); ok {
-					if extInfo := buildKlingExpansionExtInfoFromMap(expansion); extInfo != "" {
-						body.ExtInfo = extInfo
-					}
-				}
-			}
-		}
+		_ = common.Unmarshal(request.ExtraFields, &extra)
 	}
-
-	// 参考图：优先从 images（数组）读取，再兼容 image（单图字符串）
+	n := 0
+	if request.N != nil {
+		n = int(*request.N)
+	}
+	var outputFormat string
+	if len(request.OutputFormat) > 0 {
+		_ = common.Unmarshal(request.OutputFormat, &outputFormat)
+	}
 	var refURLs []string
 	if len(request.Images) > 0 {
 		var urls []string
@@ -239,27 +84,27 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		var singleURL string
 		if err := common.Unmarshal(request.Image, &singleURL); err == nil && singleURL != "" {
 			refURLs = []string{singleURL}
+		} else {
+			var urls []string
+			if err := common.Unmarshal(request.Image, &urls); err == nil {
+				refURLs = urls
+			}
 		}
 	}
 
-	// 各模型均有参考图数量上限，超出时截断并记录日志，避免上游报错。
-	// GG 2.5: 3张；GG 3.0/3.1: 14张；Kling 2.1: 4张；Kling 3.0: 1张；
-	// Kling 3.0-Omni/O1: 10张；Kling scene: 1张；Vidu q2: 7张；Qwen 0925: 1张；Hunyuan 3.0: 3张
-	maxRef := getMaxRefImages(tencentModelName, modelVersion)
-	if maxRef > 0 && len(refURLs) > maxRef {
-		common.SysLog(fmt.Sprintf(
-			"TencentVOD %s %s: 参考图数量 %d 超出上限 %d，已截断至 %d 张",
-			tencentModelName, modelVersion, len(refURLs), maxRef, maxRef,
-		))
-		refURLs = refURLs[:maxRef]
-	}
-
-	for _, url := range refURLs {
-		if strings.TrimSpace(url) != "" {
-			body.FileInfos = append(body.FileInfos, fileInfo{Type: "Url", Url: url})
-		}
-	}
-
+	body := buildImageCreateRequest(imageBuildInput{
+		SubAppId:     a.subAppId,
+		LookupModel:  resolveModelName(info),
+		Prompt:       request.Prompt,
+		Size:         request.Size,
+		Resolution:   relaycommon.ExtraString(request.Extra, "resolution"),
+		Ratio:        relaycommon.ExtraString(request.Extra, "ratio"),
+		Quality:      request.Quality,
+		N:            n,
+		OutputFormat: outputFormat,
+		Images:       refURLs,
+		Extra:        extra,
+	})
 	return body, nil
 }
 

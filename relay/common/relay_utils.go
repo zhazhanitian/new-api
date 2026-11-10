@@ -278,18 +278,38 @@ func ValidateImageTaskRequest(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		return createTaskError(fmt.Errorf("prompt is required"), "invalid_request", http.StatusBadRequest, true)
 	}
 
+	n := 0
+	if imgReq.N != nil {
+		n = int(*imgReq.N)
+	}
+	outputFormat := ""
+	if len(imgReq.OutputFormat) > 0 {
+		_ = json.Unmarshal(imgReq.OutputFormat, &outputFormat)
+	}
+	fields, err := NormalizeImageFields(imgReq.Model, ImageFields{
+		Size:         imgReq.Size,
+		Resolution:   ExtraString(imgReq.Extra, "resolution"),
+		Ratio:        ExtraString(imgReq.Extra, "ratio"),
+		Quality:      imgReq.Quality,
+		OutputFormat: outputFormat,
+		N:            n,
+	}, true)
+	if err != nil {
+		return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+	}
+
 	req := TaskSubmitReq{
 		Model:          imgReq.Model,
 		Prompt:         imgReq.Prompt,
-		Size:           imgReq.Size,
-		Quality:        imgReq.Quality,
+		Size:           fields.Size,
+		Resolution:     fields.Resolution,
+		Ratio:          fields.Ratio,
+		Quality:        fields.Quality,
 		ResponseFormat: imgReq.ResponseFormat,
 		Watermark:      imgReq.Watermark,
 		Metadata:       make(map[string]interface{}),
 	}
-	if imgReq.N != nil {
-		req.N = int(*imgReq.N)
-	}
+	req.N = n
 	// style: json.RawMessage → string
 	if len(imgReq.Style) > 0 {
 		var s string
@@ -297,8 +317,9 @@ func ValidateImageTaskRequest(c *gin.Context, info *RelayInfo) *dto.TaskError {
 			req.Style = s
 		}
 	}
-	// output_format: json.RawMessage → string
-	if len(imgReq.OutputFormat) > 0 {
+	if fields.OutputFormat != "" {
+		req.OutputFormat = fields.OutputFormat
+	} else if len(imgReq.OutputFormat) > 0 {
 		var s string
 		if json.Unmarshal(imgReq.OutputFormat, &s) == nil {
 			req.OutputFormat = s

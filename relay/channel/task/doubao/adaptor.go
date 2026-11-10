@@ -772,6 +772,20 @@ func taskReqToImageReq(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayIn
 		Size:           req.Size,
 		ResponseFormat: req.ResponseFormat,
 		Watermark:      req.Watermark,
+		Extra:          map[string]json.RawMessage{},
+	}
+	if req.Resolution != "" {
+		if b, merr := json.Marshal(req.Resolution); merr == nil {
+			imgReq.Extra["resolution"] = b
+		}
+	}
+	if req.Ratio != "" {
+		if b, merr := json.Marshal(req.Ratio); merr == nil {
+			imgReq.Extra["ratio"] = b
+		}
+	}
+	if len(imgReq.Extra) == 0 {
+		imgReq.Extra = nil
 	}
 
 	// N → *uint

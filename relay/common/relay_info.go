@@ -715,11 +715,11 @@ type TaskSubmitReq struct {
 
 	// Mode 视频生成模式，如可灵的 std / pro。仅视频。
 	Mode string `json:"mode,omitempty"`
-	// Resolution 视频分辨率档位，如 480p、720P、768P、1080P、2K、4K。仅视频。
+	// Resolution 分辨率档位。视频如 480p、720P、1080P。图片如 1K、2K、4K。
 	// 不要把 16:9 或 1920x1080 写在这里。
 	Resolution string `json:"resolution,omitempty"`
-	// Ratio 视频宽高比，如 16:9、9:16、1:1。仅视频。
-	// metadata.ratio 已废弃，只在收拢旧请求时读取。
+	// Ratio 宽高比，如 16:9、9:16、1:1。图片和视频都用它。
+	// 视频的 metadata.ratio 已废弃，只在收拢旧请求时读取。
 	Ratio string `json:"ratio,omitempty"`
 	// Duration 视频时长，单位秒。仅视频。不传则由各模型使用自己的默认值。
 	Duration int `json:"duration,omitempty"`
@@ -733,10 +733,12 @@ type TaskSubmitReq struct {
 	// Image 单张输入图。仅图片任务（/v1/images/generations、/v2/image-tasks）。
 	// 若视频旧请求带了该字段且 Images 为空，会合并为 Images[0]。
 	Image string `json:"image,omitempty"`
-	// Size 图片尺寸，如 1024x1024、2K。仅图片。
+	// Size 图片像素尺寸，只写宽x高，如 1024x1024。仅图片。
+	// 分辨率档位写 Resolution，宽高比写 Ratio。
 	// 视频不再读取。旧视频请求里的分辨率档、16:9、1920x1080 会在进计价前收拢到 Resolution、Ratio。
 	Size string `json:"size,omitempty"`
-	// Quality 图片质量或清晰度档位。仅图片。腾讯生图用它辅助确定模型版本。
+	// Quality 图片渲染精度：low、medium、high、xhigh、max。仅图片。
+	// 腾讯 gpt-image-2 用它确定模型版本。分辨率档位不要再写在这里。
 	Quality string `json:"quality,omitempty"`
 	// N 生成图片张数。仅图片。
 	N int `json:"n,omitempty"`
@@ -852,6 +854,17 @@ type TaskInfo struct {
 	// 与 ActualImages 配合使用，两者均从上游响应中读取，保证预扣和结算依据相同。
 	// 若为 0 或 1 则不触发多图结算（模型不支持多图或未请求多图）。
 	ExpectedImages int `json:"expected_images,omitempty"`
+	// TokenUsage 上游按类别返回的 token 用量。APIMart 生图用它结算，不把总 token 乘单一倍率。
+	TokenUsage *TaskTokenUsage `json:"token_usage,omitempty"`
+}
+
+// TaskTokenUsage 是图片任务的分类 token。缓存 token 是对应输入 token 的子集，结算时从原价里拆出。
+type TaskTokenUsage struct {
+	TextInputTokens        int `json:"text_input_tokens,omitempty"`
+	CachedTextInputTokens  int `json:"cached_text_input_tokens,omitempty"`
+	ImageInputTokens       int `json:"image_input_tokens,omitempty"`
+	CachedImageInputTokens int `json:"cached_image_input_tokens,omitempty"`
+	ImageOutputTokens      int `json:"image_output_tokens,omitempty"`
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

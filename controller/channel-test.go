@@ -68,6 +68,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		constant.ChannelTypeDoubaoVideo,
 		constant.ChannelTypeZhongJiVideo,
 		constant.ChannelTypeVidu,
+		constant.ChannelTypeAPIMartImage,
 	}
 	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
 		channelTypeName := constant.GetChannelTypeName(channel.Type)

@@ -57,3 +57,24 @@ func TestTaskReqToImageReqOmitsUnsetWatermark(t *testing.T) {
 		t.Fatalf("unset watermark should stay omitted: %s", body)
 	}
 }
+
+func TestTaskReqToImageReqMapsResolutionAndRatio(t *testing.T) {
+	req := &relaycommon.TaskSubmitReq{
+		Model:      "doubao-seedream-5-0-pro-260628",
+		Prompt:     "仙侠大战",
+		Resolution: "1.5K",
+		Ratio:      "16:9",
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "doubao-seedream-5-0-pro-260628",
+		},
+	}
+	upstream := volcengine.ConvertToImageGenRequest(taskReqToImageReq(req, info))
+	if upstream.Size != "2048x1152" {
+		t.Fatalf("size = %q, want 2048x1152", upstream.Size)
+	}
+	if strings.Contains(upstream.Prompt, "宽高比") || strings.Contains(upstream.Prompt, "--rt") {
+		t.Fatalf("prompt = %q", upstream.Prompt)
+	}
+}

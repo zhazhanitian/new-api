@@ -370,7 +370,8 @@ func allowedRoots(kind APIKind) map[string]bool {
 	case APIKindImageGeneration, APIKindImageTask:
 		return map[string]bool{
 			"model": true, "prompt": true, "image": true, "images": true, "n": true,
-			"size": true, "quality": true, "response_format": true, "output_format": true,
+			"size": true, "resolution": true, "ratio": true, "quality": true,
+			"response_format": true, "output_format": true,
 			"watermark": true, "extra_fields": true, "metadata": true,
 		}
 	case APIKindVideo:

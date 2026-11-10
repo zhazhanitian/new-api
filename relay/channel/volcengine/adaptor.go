@@ -20,8 +20,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/model_setting"
-	"github.com/tidwall/sjson"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/tidwall/sjson"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -111,20 +111,20 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 // ImageGenRequest 是发往火山引擎图像生成 API 的请求结构（导出供 task adaptor 复用）。
 // 标准 OpenAI 的 n 字段会被映射为 sequential_image_generation / sequential_image_generation_options。
 type ImageGenRequest struct {
-	Model          string          `json:"model"`
-	Prompt         string          `json:"prompt"`
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
 	// 图生图 / 多图融合输入，对应 OpenAI 的 image 字段（string 或 string 数组）
 	Image          json.RawMessage `json:"image,omitempty"`
 	Size           string          `json:"size,omitempty"`
 	ResponseFormat string          `json:"response_format,omitempty"`
 	// 仅 doubao-seedream-5-0 支持，可选 "png" / "jpeg"，对应 OpenAI output_format
-	OutputFormat   json.RawMessage `json:"output_format,omitempty"`
-	Watermark      *bool           `json:"watermark,omitempty"`
+	OutputFormat json.RawMessage `json:"output_format,omitempty"`
+	Watermark    *bool           `json:"watermark,omitempty"`
 	// 渠道专属参数，通过 extra_fields 传入
-	GuidanceScale  *float64        `json:"guidance_scale,omitempty"`
+	GuidanceScale *float64 `json:"guidance_scale,omitempty"`
 	// 组图生成参数：n == 1 时不填（单图），n > 1 时由 adaptor 自动填充
-	SequentialImageGeneration        string                          `json:"sequential_image_generation,omitempty"`
-	SequentialImageGenerationOptions *ImageGenSequentialOpts         `json:"sequential_image_generation_options,omitempty"`
+	SequentialImageGeneration        string                  `json:"sequential_image_generation,omitempty"`
+	SequentialImageGenerationOptions *ImageGenSequentialOpts `json:"sequential_image_generation_options,omitempty"`
 }
 
 // ImageGenSequentialOpts 组图生成选项（导出供复用）。
@@ -134,6 +134,8 @@ type ImageGenSequentialOpts struct {
 
 // ConvertToImageGenRequest 将标准 dto.ImageRequest 转换为火山引擎图像生成请求格式。
 // 同步接口（/v1/images/generations）和后台异步任务均调用此函数，保持请求结构一致。
+// 火山图片只有一个 size。调用方传宽x高时原样转发。
+// 没传 size 时，resolution 缺省按 2K，ratio 缺省按 1:1，再映射成宽x高。
 func ConvertToImageGenRequest(request dto.ImageRequest) ImageGenRequest {
 	r := ImageGenRequest{
 		Model:          request.Model,
@@ -150,6 +152,32 @@ func ConvertToImageGenRequest(request dto.ImageRequest) ImageGenRequest {
 		_ = json.Unmarshal(request.ExtraFields, &r)
 	}
 
+	resolution := relaycommon.ExtraString(request.Extra, "resolution")
+	ratio := relaycommon.ExtraString(request.Extra, "ratio")
+	if r.Size == "" && seedreamPixelTable(request.Model) != nil {
+		if resolution == "" {
+			resolution = "2K"
+		}
+		if ratio == "" {
+			ratio = "1:1"
+		}
+		if px, ok := seedreamPixelSize(request.Model, resolution, ratio); ok {
+			r.Size = px
+		} else {
+			r.Size = resolution
+			if ratio != "1:1" {
+				r.Prompt = appendAspectRatio(r.Prompt, ratio)
+			}
+		}
+	} else if r.Size == "" && resolution != "" && ratio != "" {
+		r.Size = resolution
+		r.Prompt = appendAspectRatio(r.Prompt, ratio)
+	} else if r.Size == "" && resolution != "" {
+		r.Size = resolution
+	} else if r.Size == "" && ratio != "" {
+		r.Prompt = appendAspectRatio(r.Prompt, ratio)
+	}
+
 	// n > 1 时映射为组图生成参数；n == 1 或未传时保持单图模式，不传 sequential 参数
 	if request.N != nil && *request.N > 1 {
 		r.SequentialImageGeneration = "auto"
@@ -159,6 +187,19 @@ func ConvertToImageGenRequest(request dto.ImageRequest) ImageGenRequest {
 	}
 
 	return r
+}
+
+// appendAspectRatio 把宽高比写进 prompt。火山图片接口没有 ratio 字段。
+func appendAspectRatio(prompt, ratio string) string {
+	line := "宽高比 " + strings.TrimSpace(ratio)
+	if strings.Contains(prompt, line) {
+		return prompt
+	}
+	prompt = strings.TrimRight(prompt, "\n")
+	if prompt == "" {
+		return line
+	}
+	return prompt + "\n" + line
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
@@ -454,30 +495,30 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		if readErr == nil && len(bodyBytes) > 0 {
 			var imgResp dto.ImageResponse
 			if json.Unmarshal(bodyBytes, &imgResp) == nil && len(imgResp.Data) > 0 {
-			actualN := len(imgResp.Data)
-			logger.LogInfo(c, fmt.Sprintf("[volcengine] sync image billing: actualN=%d, UsePrice=%v, OtherRatios=%v", actualN, info.PriceData.UsePrice, info.PriceData.OtherRatios))
+				actualN := len(imgResp.Data)
+				logger.LogInfo(c, fmt.Sprintf("[volcengine] sync image billing: actualN=%d, UsePrice=%v, OtherRatios=%v", actualN, info.PriceData.UsePrice, info.PriceData.OtherRatios))
 
-			// 路径 1：price-based 计费（UsePrice=true）→ 修正 OtherRatios["n"]
-			// 仅限 UsePrice 模型，ratio 模型不用 OtherRatios["n"] 计费，注入会错误地乘以 n 倍
-			if info.PriceData.UsePrice {
-				info.PriceData.AddOtherRatio("n", float64(actualN))
-			}
-
-			// 路径 2：tiered_expr 计费 → 修正 BillingRequestInput.Body 里的 n
-			// param("n") 在 settle 阶段直接从请求 body JSON 读取，必须在这里覆盖
-			// 仅在 TieredBillingSnapshot 存在时才有效（其他模式 TryTieredSettle 会直接跳过）
-			if info.TieredBillingSnapshot != nil &&
-				info.BillingRequestInput != nil && len(info.BillingRequestInput.Body) > 0 {
-				if newBody, sjsonErr := sjson.SetBytes(info.BillingRequestInput.Body, "n", actualN); sjsonErr == nil {
-					updated := billingexpr.RequestInput{
-						Headers: info.BillingRequestInput.Headers,
-						Body:    newBody,
-					}
-					info.BillingRequestInput = &updated
+				// 路径 1：price-based 计费（UsePrice=true）→ 修正 OtherRatios["n"]
+				// 仅限 UsePrice 模型，ratio 模型不用 OtherRatios["n"] 计费，注入会错误地乘以 n 倍
+				if info.PriceData.UsePrice {
+					info.PriceData.AddOtherRatio("n", float64(actualN))
 				}
-			}
 
-			logger.LogInfo(c, fmt.Sprintf("[volcengine] sync image billing after fix: OtherRatios=%v, n_in_body=%d", info.PriceData.OtherRatios, actualN))
+				// 路径 2：tiered_expr 计费 → 修正 BillingRequestInput.Body 里的 n
+				// param("n") 在 settle 阶段直接从请求 body JSON 读取，必须在这里覆盖
+				// 仅在 TieredBillingSnapshot 存在时才有效（其他模式 TryTieredSettle 会直接跳过）
+				if info.TieredBillingSnapshot != nil &&
+					info.BillingRequestInput != nil && len(info.BillingRequestInput.Body) > 0 {
+					if newBody, sjsonErr := sjson.SetBytes(info.BillingRequestInput.Body, "n", actualN); sjsonErr == nil {
+						updated := billingexpr.RequestInput{
+							Headers: info.BillingRequestInput.Headers,
+							Body:    newBody,
+						}
+						info.BillingRequestInput = &updated
+					}
+				}
+
+				logger.LogInfo(c, fmt.Sprintf("[volcengine] sync image billing after fix: OtherRatios=%v, n_in_body=%d", info.PriceData.OtherRatios, actualN))
 			}
 			// 恢复 body 供 OpenAI adaptor 继续读取
 			resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))

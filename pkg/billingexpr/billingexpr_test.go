@@ -312,35 +312,90 @@ func TestPixels_NamedTiersAndSeparators(t *testing.T) {
 	}
 }
 
-// gpt-image-2 commercial expression: quality aliases + pixel-area size tiers.
+// gpt-image-2：有 size 时按总像素分档，否则按 resolution 分档，缺省 1K。
+// low、xhigh、max 和未传同一档；medium、high 各一档。hd、standard 不再识别。
 const gptImage2Expr = `
 let q = param("quality");
-let px = pixels(param("size"));
+let sz = param("size");
+let res = param("resolution");
+let px = (sz != nil && sz != "") ? pixels(sz) : 0;
 let n = param("n") != nil ? param("n") : 1;
 let imgCount = param("image") == nil ? 0 : (param("image.#") != nil && param("image.#") > 0 ? param("image.#") : 1);
+let band = px > 2048 * 2048 ? "4K" : px > 1024 * 1024 ? "2K" : px > 0 ? "1K" : ((res == "4K" || res == "4k") ? "4K" : ((res == "2K" || res == "2k") ? "2K" : "1K"));
 (
-  (q == "high" || q == "hd") ? (
-    px > 2048 * 2048 ? tier("high-4K", 731507) :
-    px > 1024 * 1024 ? tier("high-2K", 439726) :
+  q == "high" ? (
+    band == "4K" ? tier("high-4K", 731507) :
+    band == "2K" ? tier("high-2K", 439726) :
     tier("high-1K", 216849)
   ) : q == "medium" ? (
-    px > 2048 * 2048 ? tier("medium-4K", 182877) :
-    px > 1024 * 1024 ? tier("medium-2K", 109973) :
+    band == "4K" ? tier("medium-4K", 182877) :
+    band == "2K" ? tier("medium-2K", 109973) :
     tier("medium-1K", 54521)
   ) : (
-    px > 2048 * 2048 ? tier("low-4K", 20548) :
-    px > 1024 * 1024 ? tier("low-2K", 12329) :
+    band == "4K" ? tier("low-4K", 20548) :
+    band == "2K" ? tier("low-2K", 12329) :
     tier("low-1K", 6164)
   )
 ) * n + imgCount * 13699
 `
 
+const seedream50ProExpr = `
+let sz = param("size");
+let res = param("resolution");
+let px = (sz != nil && sz != "") ? pixels(sz) : 0;
+let n = param("n") != nil ? param("n") : 1;
+let imgCount = param("image") == nil ? 0 : (param("image.#") != nil && param("image.#") > 0 ? param("image.#") : 1);
+let extraIn = imgCount > 1 ? imgCount - 1 : 0;
+let large = px > 2610000 ? 1 : (px > 0 ? 0 : ((res == "1K" || res == "1k" || res == "1.5K" || res == "1.5k") ? 0 : 1));
+(
+  large == 1 ? tier("gt-2.61m", 82192) : tier("le-2.61m", 41096)
+) * n + extraIn * 2740
+`
+
+func TestSeedream50ProExpr(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		tier string
+		cost float64
+	}{
+		{"default 2K", `{}`, "gt-2.61m", 82192},
+		{"resolution 1K", `{"resolution":"1K"}`, "le-2.61m", 41096},
+		{"resolution 1.5K", `{"resolution":"1.5K"}`, "le-2.61m", 41096},
+		{"resolution 2K", `{"resolution":"2K"}`, "gt-2.61m", 82192},
+		{"size under 2.61m", `{"size":"1536x1536"}`, "le-2.61m", 41096},
+		{"size over 2.61m", `{"size":"2048x2048"}`, "gt-2.61m", 82192},
+		{"n=2 at 2K", `{"resolution":"2K","n":2}`, "gt-2.61m", 82192 * 2},
+		{"first input free", `{"resolution":"2K","image":"https://x"}`, "gt-2.61m", 82192},
+		{"second input", `{"resolution":"1K","image":["a","b"]}`, "le-2.61m", 41096 + 2740},
+		{"two extra inputs and n=2", `{"resolution":"2K","n":2,"image":["a","b","c"]}`, "gt-2.61m", 82192*2 + 2740*2},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			cost, trace, err := billingexpr.RunExprWithRequest(
+				seedream50ProExpr,
+				billingexpr.TokenParams{},
+				billingexpr.RequestInput{Body: []byte(tt.body)},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if trace.MatchedTier != tt.tier {
+				t.Errorf("tier = %q, want %q", trace.MatchedTier, tt.tier)
+			}
+			if math.Abs(cost-tt.cost) > 1e-6 {
+				t.Errorf("cost = %f, want %f", cost, tt.cost)
+			}
+		})
+	}
+}
+
 func TestGptImage2Expr_SizeAndQualityTiers(t *testing.T) {
 	cases := []struct {
-		name  string
-		body  string
-		tier  string
-		cost  float64
+		name string
+		body string
+		tier string
+		cost float64
 	}{
 		{"default 1K low", `{}`, "low-1K", 6164},
 		{"1024x1024 high", `{"quality":"high","size":"1024x1024"}`, "high-1K", 216849},
@@ -348,9 +403,9 @@ func TestGptImage2Expr_SizeAndQualityTiers(t *testing.T) {
 		{"1024x1792 high", `{"quality":"high","size":"1024x1792"}`, "high-2K", 439726},
 		{"2048x2048 high", `{"quality":"high","size":"2048x2048"}`, "high-2K", 439726},
 		{"2880x2880 high", `{"quality":"high","size":"2880x2880"}`, "high-4K", 731507},
-		{"hd alias", `{"quality":"hd","size":"1024x1024"}`, "high-1K", 216849},
-		{"standard is low", `{"quality":"standard","size":"1024x1024"}`, "low-1K", 6164},
-		{"named 4K", `{"quality":"medium","size":"4K"}`, "medium-4K", 182877},
+		{"xhigh bills as low", `{"quality":"xhigh","size":"1024x1024"}`, "low-1K", 6164},
+		{"max bills as low", `{"quality":"max","resolution":"4K"}`, "low-4K", 20548},
+		{"resolution 2K medium", `{"quality":"medium","resolution":"2K"}`, "medium-2K", 109973},
 		{"n=2", `{"quality":"low","size":"1024x1024","n":2}`, "low-1K", 6164 * 2},
 		{"one ref image", `{"quality":"low","size":"1024x1024","image":"https://x"}`, "low-1K", 6164 + 13699},
 		{"two ref images", `{"quality":"low","size":"1024x1024","image":["a","b"]}`, "low-1K", 6164 + 13699*2},
@@ -375,9 +430,74 @@ func TestGptImage2Expr_SizeAndQualityTiers(t *testing.T) {
 	}
 }
 
+func TestImageResolutionExprs(t *testing.T) {
+	gemini := `
+(param("resolution") == "4K" || param("resolution") == "4k") ? tier("4K", 63014) :
+(param("resolution") == "2K" || param("resolution") == "2k") ? tier("2K", 52055) :
+tier("1K", 41096)
+`
+	kling := `
+((param("resolution") == "2K" || param("resolution") == "2k") ? tier("2k", 27397) :
+tier("1k", 27397)) * (param("n") != nil ? int(param("n")) : 1)
+`
+	cases := []struct {
+		name string
+		expr string
+		body string
+		tier string
+		cost float64
+	}{
+		{"gemini default", gemini, `{}`, "1K", 41096},
+		{"gemini 2K", gemini, `{"resolution":"2K"}`, "2K", 52055},
+		{"gemini 4k", gemini, `{"resolution":"4k"}`, "4K", 63014},
+		{"kling default", kling, `{}`, "1k", 27397},
+		{"kling 2k n=2", kling, `{"resolution":"2k","n":2}`, "2k", 27397 * 2},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			cost, trace, err := billingexpr.RunExprWithRequest(
+				tt.expr,
+				billingexpr.TokenParams{},
+				billingexpr.RequestInput{Body: []byte(tt.body)},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if trace.MatchedTier != tt.tier {
+				t.Errorf("tier = %q, want %q", trace.MatchedTier, tt.tier)
+			}
+			if math.Abs(cost-tt.cost) > 1e-6 {
+				t.Errorf("cost = %f, want %f", cost, tt.cost)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Zero tokens
 // ---------------------------------------------------------------------------
+
+func TestResolutionExprDefaults(t *testing.T) {
+	expr := `(param("resolution") == "4K" || param("resolution") == "4k") ? tier("4K", 3) : (param("resolution") == "2K" || param("resolution") == "2k") ? tier("2K", 2) : (param("resolution") == "720P" || param("resolution") == "720p") ? tier("720P", 4) : tier("1K", 1)`
+	cases := []struct {
+		body string
+		tier string
+	}{
+		{`{}`, "1K"},
+		{`{"resolution":"2K"}`, "2K"},
+		{`{"resolution":"4k"}`, "4K"},
+		{`{"resolution":"720P"}`, "720P"},
+	}
+	for _, tt := range cases {
+		_, trace, err := billingexpr.RunExprWithRequest(expr, billingexpr.TokenParams{}, billingexpr.RequestInput{Body: []byte(tt.body)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if trace.MatchedTier != tt.tier {
+			t.Errorf("body %s tier %q, want %q", tt.body, trace.MatchedTier, tt.tier)
+		}
+	}
+}
 
 func TestZeroTokens(t *testing.T) {
 	cost, _, err := billingexpr.RunExpr(claudeExpr, billingexpr.TokenParams{})

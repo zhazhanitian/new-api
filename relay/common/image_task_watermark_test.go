@@ -17,7 +17,7 @@ func TestValidateImageTaskRequestKeepsWatermarkFalse(t *testing.T) {
 	body := []byte(`{
 		"model": "doubao-seedream-5-0-260128",
 		"prompt": "仙侠大战",
-		"size": "2K",
+		"resolution": "2K",
 		"output_format": "png",
 		"n": 1,
 		"watermark": false
@@ -38,5 +38,8 @@ func TestValidateImageTaskRequestKeepsWatermarkFalse(t *testing.T) {
 	}
 	if req.Watermark == nil || *req.Watermark {
 		t.Fatalf("watermark = %v, want false", req.Watermark)
+	}
+	if req.Resolution != "2K" {
+		t.Fatalf("resolution = %q, want 2K", req.Resolution)
 	}
 }

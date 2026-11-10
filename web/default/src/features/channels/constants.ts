@@ -80,12 +80,13 @@ export const CHANNEL_TYPES = {
   59: 'JoyAgent',
   60: 'APIMart Suno',
   61: 'ZhongJiVideo',
+  62: 'APIMart Image',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
   1, 14, 33, 24, 43, 3, 41, 48, 42, 34, 20, 4, 40, 27, 25, 17, 26, 15, 46, 23,
   18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 22, 21, 44, 2, 5, 36, 50,
-  51, 52, 53, 54, 55, 56, 60, 61,
+  51, 52, 53, 54, 55, 56, 60, 61, 62,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
@@ -399,6 +400,7 @@ export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
   58: 'Format: SubAppId|SecretId|SecretKey (SubAppId is 0 for main app)',
   59: 'JoyAgent API Key (Bearer token from agentrs.jd.com)',
   60: 'APIMart API Key (Bearer token from apib.ai)',
+  62: 'APIMart API Key (Bearer token from apib.ai)',
 }
 
 export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {

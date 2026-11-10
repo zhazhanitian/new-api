@@ -59,6 +59,7 @@ const (
 	ChannelTypeJoyAgent       = 59
 	ChannelTypeAPIMartSuno    = 60
 	ChannelTypeZhongJiVideo   = 61
+	ChannelTypeAPIMartImage   = 62
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -126,6 +127,7 @@ var ChannelBaseURLs = []string{
 	"https://agentrs.jd.com",                    //59
 	"https://apib.ai",                           //60
 	"https://aiplay.gee.cn/new-api",             //61 ZhongJi video
+	"https://apib.ai",                           //62 APIMart image
 }
 
 var ChannelTypeNames = map[int]string{
@@ -187,6 +189,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeJoyAgent:       "JoyAgent",
 	ChannelTypeAPIMartSuno:    "APIMartSuno",
 	ChannelTypeZhongJiVideo:   "ZhongJiVideo",
+	ChannelTypeAPIMartImage:   "APIMartImage",
 }
 
 func GetChannelTypeName(channelType int) string {

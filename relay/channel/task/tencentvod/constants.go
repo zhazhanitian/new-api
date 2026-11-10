@@ -23,6 +23,9 @@ var ModelList = []string{
 	"gemini-2.5-flash-image",
 	"gemini-3-pro-image",
 	"gemini-3.1-flash-image",
+	"GG-2.5-flash-image",
+	"GG-3-pro-image",
+	"GG-3.1-flash-image",
 	// Kling 系列生图模型（腾讯 VOD ModelName="Kling"）
 	// kling-image-scene 为扩图模式，需配合 metadata.scene_type="image_expand" 使用
 	"kling-image-2.1",
@@ -48,6 +51,9 @@ var modelNameMap = map[string]string{
 	"gemini-2.5-flash-image": "GG",
 	"gemini-3-pro-image":     "GG",
 	"gemini-3.1-flash-image": "GG",
+	"GG-2.5-flash-image":     "GG",
+	"GG-3-pro-image":         "GG",
+	"GG-3.1-flash-image":     "GG",
 	// Kling 系列：五个子模型均映射到 ModelName="Kling"，版本通过 klingVersionMap 区分
 	"kling-image-2.1":      "Kling",
 	"kling-image-3.0":      "Kling",
@@ -68,6 +74,9 @@ var ggVersionMap = map[string]string{
 	"gemini-2.5-flash-image": "2.5",
 	"gemini-3-pro-image":     "3.0",
 	"gemini-3.1-flash-image": "3.1",
+	"GG-2.5-flash-image":     "2.5",
+	"GG-3-pro-image":         "3.0",
+	"GG-3.1-flash-image":     "3.1",
 }
 
 // ggMaxRefImages maps GG ModelVersion to maximum number of reference images allowed.
@@ -388,6 +397,8 @@ func modelToTencentName(originModel string) string {
 func qualityToModelVersion(modelName, quality string) string {
 	switch modelName {
 	case "OG":
+		// low / medium / high 映射到 image2_*。
+		// xhigh、max 和未传不在表里，落到 image2_low。腾讯渠道没有 2.5。
 		if v, ok := ogQualityMap[quality]; ok {
 			return v
 		}
